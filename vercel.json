@@ -1,7 +1,0 @@
-{
-  "rewrites": [
-    { "source": "/api/proxy", "destination": "/api/proxy.js" }
-  ],
-  "cleanUrls": true,
-  "trailingSlash": false
-}
