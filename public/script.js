@@ -85,33 +85,33 @@ const API = {
     REQUEST_DELAY: 200,
     REQUEST_JITTER: 100
 };
-const PROXIES = [
-    {
-        name: 'api.codetabs.com',
-        getApiUrl: (url) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`,
-        getImageUrl: (url) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`,
-        parse: (d) => d
-    },
-    {
-        name: 'proxy.cors.sh',
-        getApiUrl: (url) => `https://proxy.cors.sh/${url}`,
-        getImageUrl: (url) => `https://proxy.cors.sh/${url}`,
-        parse: (d) => d
-    },
-    {
-        name: 'corsproxy.org',
-        getApiUrl: (url) => `https://corsproxy.org/?${encodeURIComponent(url)}`,
-        getImageUrl: (url) => `https://corsproxy.org/?${encodeURIComponent(url)}`,
-        parse: (d) => d
-    },
-    {
-        name: 'netlify-cors-proxy',
-        getApiUrl: (url) => `https://cors-anywhere-netlify.herokuapp.com/${url}`,
-        getImageUrl: (url) => `https://cors-anywhere-netlify.herokuapp.com/${url}`,
-        parse: (d) => d
-    }
-];
-let currentProxyIndex = 0;
+// const PROXIES = [
+//     {
+//         name: 'api.codetabs.com',
+//         getApiUrl: (url) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`,
+//         getImageUrl: (url) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`,
+//         parse: (d) => d
+//     },
+//     {
+//         name: 'proxy.cors.sh',
+//         getApiUrl: (url) => `https://proxy.cors.sh/${url}`,
+//         getImageUrl: (url) => `https://proxy.cors.sh/${url}`,
+//         parse: (d) => d
+//     },
+//     {
+//         name: 'corsproxy.org',
+//         getApiUrl: (url) => `https://corsproxy.org/?${encodeURIComponent(url)}`,
+//         getImageUrl: (url) => `https://corsproxy.org/?${encodeURIComponent(url)}`,
+//         parse: (d) => d
+//     },
+//     {
+//         name: 'netlify-cors-proxy',
+//         getApiUrl: (url) => `https://cors-anywhere-netlify.herokuapp.com/${url}`,
+//         getImageUrl: (url) => `https://cors-anywhere-netlify.herokuapp.com/${url}`,
+//         parse: (d) => d
+//     }
+// ];
+// let currentProxyIndex = 0;
 
 // =================== UTILITIES ===================
 function saveViewState(type, data = {}) {
@@ -209,81 +209,61 @@ function safeJSONParse(text) {
 }
 
 // =================== PROXY NETWORK ===================
-let requestQueue = [], isProcessingQueue = false;
+// let requestQueue = [], isProcessingQueue = false;
 function getCurrentProxy() { return PROXIES[currentProxyIndex]; }
-function switchToNextProxy() { currentProxyIndex = (currentProxyIndex + 1) % PROXIES.length; }
-async function processRequestQueue() {
-    if (isProcessingQueue || !requestQueue.length) return;
-    isProcessingQueue = true;
-    while (requestQueue.length) {
-        const { resolve, reject, url, options } = requestQueue.shift();
-        try {
-            const response = await fetch(url, options);
-            if (!response.ok) {
-                if (response.status === 429) {
-                    await new Promise(r => setTimeout(r, 3000)); // Wait longer on 429
-                    requestQueue.unshift({ resolve, reject, url, options });
-                    continue;
-                }
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            resolve(response);
-        } catch (error) {
-            reject(error);
-        }
-        if (requestQueue.length) {
-            // Add random jitter to avoid being detected as a bot
-            const jitter = Math.floor(Math.random() * API.REQUEST_JITTER);
-            await new Promise(r => setTimeout(r, API.REQUEST_DELAY + jitter));
-        }
-    }
-    isProcessingQueue = false;
-}
-function safeFetch(url, options = {}) {
-    return new Promise((resolve, reject) => {
-        const fetchOpt = {
-            method: 'GET',
-            ...options,
-            headers: {
-                'User-Agent': 'Manga ni Carlo/1.0 (Jeysixczs)',
-                'Accept': 'application/json',
-                ...options.headers
-            }
-        };
-        requestQueue.push({ resolve, reject, url, options: fetchOpt });
-        processRequestQueue();
-    });
-}
+// function switchToNextProxy() { currentProxyIndex = (currentProxyIndex + 1) % PROXIES.length; }
+// async function processRequestQueue() {
+//     if (isProcessingQueue || !requestQueue.length) return;
+//     isProcessingQueue = true;
+//     while (requestQueue.length) {
+//         const { resolve, reject, url, options } = requestQueue.shift();
+//         try {
+//             const response = await fetch(url, options);
+//             if (!response.ok) {
+//                 if (response.status === 429) {
+//                     await new Promise(r => setTimeout(r, 3000)); // Wait longer on 429
+//                     requestQueue.unshift({ resolve, reject, url, options });
+//                     continue;
+//                 }
+//                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+//             }
+//             resolve(response);
+//         } catch (error) {
+//             reject(error);
+//         }
+//         if (requestQueue.length) {
+//             // Add random jitter to avoid being detected as a bot
+//             const jitter = Math.floor(Math.random() * API.REQUEST_JITTER);
+//             await new Promise(r => setTimeout(r, API.REQUEST_DELAY + jitter));
+//         }
+//     }
+//     isProcessingQueue = false;
+// }
+// function safeFetch(url, options = {}) {
+//     return new Promise((resolve, reject) => {
+//         const fetchOpt = {
+//             method: 'GET',
+//             ...options,
+//             headers: {
+//                 'User-Agent': 'Manga ni Carlo/1.0 (Jeysixczs)',
+//                 'Accept': 'application/json',
+//                 ...options.headers
+//             }
+//         };
+//         requestQueue.push({ resolve, reject, url, options: fetchOpt });
+//         processRequestQueue();
+//     });
+// }
 async function fetchWithProxy(url, isImage = false) {
-    let lastError = null, allProxiesFailed = false;
-    for (let attempt = 0; attempt < PROXIES.length; attempt++) {
-        const proxyIndex = (currentProxyIndex + attempt) % PROXIES.length;
-        const proxy = PROXIES[proxyIndex];
-        const proxyUrl = isImage ? proxy.getImageUrl(url) : proxy.getApiUrl(url);
-        try {
-            const response = await safeFetch(proxyUrl);
-            if (isImage) { currentProxyIndex = proxyIndex; return proxyUrl; }
-            const text = await response.text();
-            if (
-                text.includes('Rate limit') || text.includes('Too Many Requests') ||
-                text.includes('limit reached') || text.includes('Please create an account at https://accounts.corsproxy.io') ||
-                text.includes('You have exceeded your request quota')
-            ) throw new Error('Rate limit reached');
-            if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) throw new Error('Received HTML response instead of JSON');
-            const data = safeJSONParse(text);
-            if (!data) throw new Error('Invalid JSON from API');
-            const parsedData = proxy.parse(data);
-            currentProxyIndex = proxyIndex;
-            return parsedData;
-        } catch (error) {
-            lastError = error;
-        }
-    }
-    allProxiesFailed = true;
-    if (allProxiesFailed) {
-        throw new Error('All proxy services failed or banned. Please try again later.');
-    }
-    throw lastError || new Error('All proxy services failed');
+    const proxyUrl = `/api/proxy?url=${encodeURIComponent(url)}`;
+    if (isImage) return proxyUrl;
+    const response = await fetch(proxyUrl);
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    const text = await response.text();
+    if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) throw new Error('Received HTML response instead of JSON');
+    const data = safeJSONParse(text);
+    if (!data) throw new Error('Invalid JSON from API');
+    return data;
 }
 
 // =================== API HELPERS ===================
@@ -383,38 +363,17 @@ async function fetchChapters(mangaId, offset = 0, limit = API.CHAPTER_LIMIT) {
 
 async function fetchChapterPages(chapterId) {
     const apiUrl = `https://api.mangadex.org/at-home/server/${chapterId}`;
-    try {
-        const data = await fetchWithProxy(apiUrl);
-        if (!data?.chapter) throw new Error('Invalid chapter pages response');
-        let pages = Array.isArray(data.chapter.data) && data.chapter.data.length > 0
-            ? data.chapter.data
-            : (Array.isArray(data.chapter.dataSaver) && data.chapter.dataSaver.length > 0
-                ? data.chapter.dataSaver
-                : null);
-        let usingDataSaver = false;
-        if (!pages) throw new Error('No pages available for this chapter (both data and data-saver empty)');
-        if (!data.chapter.data?.length) usingDataSaver = true;
-        return { ...data, _pages: pages, _usingDataSaver: usingDataSaver };
-    } catch (error) {
-        if (
-            error.message.includes('Network error') ||
-            error.message.includes('proxy') ||
-            error.message.includes('Failed to fetch') ||
-            error.message.includes('timeout')
-        ) {
-            switchToNextProxy();
-            const d = await fetchWithProxy(apiUrl);
-            let pages = Array.isArray(d.chapter.data) && d.chapter.data.length > 0
-                ? d.chapter.data
-                : (Array.isArray(d.chapter.dataSaver) && d.chapter.dataSaver.length > 0
-                    ? d.chapter.dataSaver
-                    : null);
-            let usingDataSaver = !d.chapter.data?.length;
-            if (!pages) throw new Error('No pages available for this chapter (both data and data-saver empty)');
-            return { ...d, _pages: pages, _usingDataSaver: usingDataSaver };
-        }
-        throw new Error('Failed to load chapter pages: ' + error.message);
-    }
+    const data = await fetchWithProxy(apiUrl);
+    if (!data?.chapter) throw new Error('Invalid chapter pages response');
+    let pages = Array.isArray(data.chapter.data) && data.chapter.data.length > 0
+        ? data.chapter.data
+        : (Array.isArray(data.chapter.dataSaver) && data.chapter.dataSaver.length > 0
+            ? data.chapter.dataSaver
+            : null);
+    let usingDataSaver = false;
+    if (!pages) throw new Error('No pages available for this chapter (both data and data-saver empty)');
+    if (!data.chapter.data?.length) usingDataSaver = true;
+    return { ...data, _pages: pages, _usingDataSaver: usingDataSaver };
 }
 async function getCoverUrl(manga) {
     const coverRel = manga?.relationships?.find(r => r.type === 'cover_art');
@@ -429,8 +388,7 @@ async function getCoverUrl(manga) {
     return getProxiedImageUrl(directUrl);
 }
 function getProxiedImageUrl(url) {
-    const proxy = PROXIES[currentProxyIndex];
-    return proxy.getImageUrl(url);
+    return `/api/proxy?url=${encodeURIComponent(url)}`;
 }
 
 // =================== UI CREATORS ===================
@@ -1303,9 +1261,9 @@ window.debugState = function () {
         currentChapter: STATE.currentChapter?.id,
         currentChapterIndex: STATE.currentChapterIndex,
         totalChapters: STATE.allChapters.length,
-        currentProxy: getCurrentProxy().name,
+        // currentProxy: getCurrentProxy().name,
         queueLength: requestQueue.length,
-        isProcessingQueue,
+        // isProcessingQueue,
         apiLimits: {
             manga: STATE.limit,
             chapters: API.CHAPTER_LIMIT,
@@ -1313,7 +1271,7 @@ window.debugState = function () {
         }
     });
 };
-window.switchProxy = function () { switchToNextProxy(); };
+// window.switchProxy = function () { switchToNextProxy(); };
 window.testUrl = function (url) {
     fetchWithProxy(url).then(data => { console.log('✅ Test successful:', data); }).catch(error => { console.error('❌ Test failed:', error); });
 };
