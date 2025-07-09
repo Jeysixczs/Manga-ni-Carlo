@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manhwa ni Carlo</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="container">
+        <!-- Main Gallery View -->
+        <div id="gallery-view" class="view active">
+            <h1>Manhwa ni Carlo</h1>
+
+            <div class="nav-tabs">
+                <div class="nav-tab active" data-view="featured">Explore</div>
+                <div class="nav-tab" data-view="popular">Popular</div>
+                <div class="nav-tab" data-view="recent-updates">Recent Updates</div>
+                <div class="nav-tab" data-view="new-releases">New Releases</div>
+            </div>
+
+            <!-- Enhanced Search Section -->
+            <div class="search-section">
+                <div class="search-container">
+                    <div class="search-input-wrapper">
+                        <input type="text" id="search-input" placeholder="Search manga by title, author, or artist..."
+                            autocomplete="off">
+                        <button id="search-btn" class="search-button">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <path d="M21 21L16.65 16.65"></path>
+                            </svg>
+                        </button>
+                        <button id="clear-search-btn" class="clear-search-button" style="display: none;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    </div>
+
+                    <!-- Search Suggestions -->
+                    <div id="search-suggestions" class="search-suggestions" style="display: none;"></div>
+                </div>
+
+                <!-- Advanced Filters -->
+                <div class="filters-container">
+                    <button id="toggle-filters" class="filter-toggle-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <polygon points="22,3 2,3 10,12.46 10,19 14,21 14,12.46"></polygon>
+                        </svg>
+                        Filters
+                    </button>
+
+                    <div id="advanced-filters" class="advanced-filters" style="display: none;">
+                        <div class="filter-group">
+                            <label for="status-filter">Status:</label>
+                            <select id="status-filter">
+                                <option value="">All Status</option>
+                                <option value="ongoing">Ongoing</option>
+                                <option value="completed">Completed</option>
+                                <option value="hiatus">Hiatus</option>
+                                <option value="cancelled">Cancelled</option>
+                            </select>
+                        </div>
+
+                        <div class="filter-group">
+                            <label for="year-filter">Year:</label>
+                            <select id="year-filter">
+                                <option value="">All Years</option>
+                            </select>
+                        </div>
+
+                        <div class="filter-group">
+                            <label for="rating-filter">Content Rating:</label>
+                            <select id="rating-filter">
+                                <option value="safe,suggestive,erotica">All Ratings</option>
+                                <option value="safe">Safe</option>
+                                <option value="suggestive">Suggestive</option>
+                                <option value="erotica">Erotica</option>
+                            </select>
+                        </div>
+
+                        <div class="filter-group">
+                            <label for="sort-filter">Sort By:</label>
+                            <select id="sort-filter">
+                                <option value="latestUploadedChapter">Latest Chapter</option>
+                                <option value="title">Title</option>
+                                <option value="year">Year</option>
+                                <option value="createdAt">Created Date</option>
+                                <option value="updatedAt">Updated Date</option>
+                                <option value="followedCount">Most Followed</option>
+                                <option value="relevance">Relevance</option>
+                            </select>
+                        </div>
+
+                        <button id="apply-filters" class="apply-filters-btn">Apply Filters</button>
+                        <button id="reset-filters" class="reset-filters-btn">Reset</button>
+                    </div>
+                </div>
+
+                <!-- Search Results Info -->
+                <div id="search-results-info" class="search-results-info" style="display: none;">
+                    <span id="search-results-text" class="search-results-text"></span>
+                    <button id="clear-search-results" class="clear-results-btn">Clear Search</button>
+                </div>
+            </div>
+
+            <div class="pagination-controls">
+                <button id="prev-page" disabled>Previous</button>
+                <span id="page-info">Page 1 of 1</span>
+                <button id="next-page">Next</button>
+            </div>
+            <div class="section-header">
+                <h2 class="section-title gradient-text" id="labels">Explore Manga</h2>
+            </div>
+            <div id="manga-list" class="manga-grid"></div>
+            <div class="pagination-controls">
+                <button id="prev-page-bottom" disabled>Previous</button>
+                <span id="page-info-bottom">Page 1 of 1</span>
+                <button id="next-page-bottom">Next</button>
+            </div>
+        </div>
+
+
+        <!-- Manga Details View -->
+        <div id="manga-details-view" class="view">
+            <div class="container">
+                <button id="back-to-gallery" class="back-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M19 12H5M12 19l-7-7 7-7"></path>
+                    </svg>
+                    Back to Gallery
+                </button>
+
+                <h3 id="manga-details-title">Manga Details</h3>
+
+                <div class="manga-details-content">
+                    <div class="manga-cover-section">
+                        <img id="manga-details-cover" class="details-cover" alt="Manga Cover">
+                        <div class="manga-meta">
+                            <div class="meta-item">
+                                <strong>Status:</strong> <span id="manga-status">Unknown</span>
+                            </div>
+                            <div class="meta-item">
+                                <strong>Year:</strong> <span id="manga-year">Unknown</span>
+                            </div>
+                            <div class="meta-item">
+                                <strong>Author:</strong> <span id="manga-author">Unknown</span>
+                            </div>
+                            <div class="meta-item">
+                                <strong>Artist:</strong> <span id="manga-artist">Unknown</span>
+                            </div>
+                            <div class="meta-item">
+                                <strong>Genres:</strong> <span id="manga-genres">Unknown</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="manga-info-section">
+                        <div class="manga-alternative-titles">
+                            <h3>Alternative Titles</h3>
+                            <div id="manga-alt-titles">No alternative titles</div>
+                        </div>
+
+                        <div class="manga-description">
+                            <h3>Description</h3>
+                            <div id="manga-full-description">No description available</div>
+                        </div>
+
+                        <div class="manga-chapters">
+                            <h3>Chapters</h3>
+                            <div id="manga-chapters-list" class="chapters-list"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chapter Reader View -->
+        <div id="chapter-reader-view" class="view">
+            <div class="reader-header">
+                <div class="reader-header-content">
+                    <div class="reader-nav-controls">
+                        <button id="back-to-details" class="back-btn">
+                            <span>Back</span>
+                        </button>
+                    </div>
+
+                    <h2 id="chapter-title">Chapter Title Goes Here</h2>
+
+                    <div class="reader-chapter-nav">
+                        <button id="prev-chapter" disabled>
+                            <span>Prev</span>
+                        </button>
+                        <span id="chapter-info">Ch. 1</span>
+                        <button id="next-chapter" disabled>
+                            <span>Next</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="reader-content">
+                <div id="chapter-pages" class="chapter-pages"></div>
+            </div>
+
+            <div class="reader-footer">
+                <div class="reader-controls">
+                    <button id="prev-chapter-bottom" disabled>← Previous Chapter</button>
+                    <span id="chapter-info-bottom">Chapter 1</span>
+                    <button id="next-chapter-bottom" disabled>Next Chapter →</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="loading-overlay">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Loading...</div>
+        </div>
+        <footer>
+            <p>&copy; 2025 ManhwaniCarlo. All rights reserved.</p>
+            <p>Created by JeysiDev</p>
+
+            <p style="font-size: 0.9em; color: #aaa;">
+                Powered by <a href="https://mangadex.org" target="_blank" rel="noopener"
+                    style="color: #81e6d9; text-decoration: underline;">MangaDex API</a>
+            </p>
+        </footer>
+    </div>
+
+
+    <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+        </svg>
+    </button>
+    <script src="script.js"></script>
+</body>
+
+</html>
