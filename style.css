@@ -1844,3 +1844,16 @@ footer p {
     background: var(--gray);
     color: var(--dark-gray);
 }
+[data-theme="light"] .advanced-filters select,
+[data-theme="light"] #advanced-filters select {
+    color: #222 !important;
+    background-color: #fff !important;
+    border: 1px solid #ccc !important;
+}
+[data-theme="light"] .advanced-filters label {
+    color: #222 !important;
+}
+[data-theme="light"] .filter-group select option {
+    background: #fff;
+    color: #222;
+}
