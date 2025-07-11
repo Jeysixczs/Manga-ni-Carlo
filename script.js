@@ -1188,9 +1188,11 @@ function setupEventListeners() {
 }
 
 // =================== INIT ===================
-// ... (keep your definitions above as is)
-
 function initializeApp() {
+    const deepLinkedMangaId = getQueryParam('manga');
+    if (!deepLinkedMangaId) {
+        clearViewState();
+    }
     const required = [
         { element: el.mangaList, name: 'manga-list' },
         { element: el.galleryView, name: 'gallery-view' },
