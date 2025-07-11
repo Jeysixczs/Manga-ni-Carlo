@@ -635,7 +635,9 @@ async function performSearch(page = 1) {
 
 // =================== DETAILS/READER ===================
 async function showMangaDetails(mangaId) {
-    saveViewState('details', { mangaId }); // Save state
+    updateURLForManga(mangaId); // DeepLinks
+    saveViewState('details', { mangaId });
+    
     const mangaDetails = await fetchMangaDetails(mangaId);
     await new Promise(r => setTimeout(r, 300));
 
@@ -1130,6 +1132,7 @@ function setupEventListeners() {
 
     if (el.backToGalleryBtn) el.backToGalleryBtn.addEventListener('click', () => {
         // Save current gallery view state to localStorage
+        clearMangaParamFromURL(); // Deep Links
         saveViewState('tab', { tab: STATE.currentTab });
         localStorage.setItem('galleryPage', STATE.page);
         localStorage.setItem('galleryTab', STATE.currentTab);
@@ -1231,6 +1234,16 @@ function initializeApp() {
         setupEventListeners();
         setupSmartHeader();
 
+        const deepLinkedMangaId = getQueryParam('manga');
+        if (deepLinkedMangaId) {
+            showView(el.mangaDetailsView);
+            showMangaDetails(deepLinkedMangaId).catch(() => {
+                showView(el.galleryView);
+                handlePaginationForCurrentTab();
+            });
+            return;
+        }
+
         // Reader view restore
         if (view === 'reader' && mangaId && chapterId && chapterIndex !== null) {
         showView(el.chapterReaderView);
@@ -1318,7 +1331,19 @@ window.testUrl = function (url) {
     fetchWithProxy(url).then(data => { console.log('✅ Test successful:', data); }).catch(error => { console.error('❌ Test failed:', error); });
 };
 
-
+window.addEventListener('popstate', (event) => {
+    const mangaId = getQueryParam('manga');
+    if (mangaId) {
+        showView(el.mangaDetailsView);
+        showMangaDetails(mangaId).catch(() => {
+            showView(el.galleryView);
+            handlePaginationForCurrentTab();
+        });
+    } else {
+        showView(el.galleryView);
+        handlePaginationForCurrentTab();
+    }
+});
 // =================== ERROR HANDLING ===================
 window.addEventListener('error', (event) => { hideLoading(); });
 window.addEventListener('unhandledrejection', (event) => { hideLoading(); event.preventDefault(); });
@@ -1351,4 +1376,22 @@ async function renderRandomMangaList(page) {
     } finally {
         STATE.isLoading = false;
     }
+}
+
+// =================== DeepLinks ===================//
+
+function getQueryParam(name) {
+    const url = window.location.search;
+    const params = new URLSearchParams(url);
+    return params.get(name);
+}
+function updateURLForManga(mangaId) {
+    const params = new URLSearchParams(window.location.search);
+    params.set('manga', mangaId);
+    window.history.pushState({ mangaId }, '', `${window.location.pathname}?${params.toString()}`);
+}
+function clearMangaParamFromURL() {
+    const params = new URLSearchParams(window.location.search);
+    params.delete('manga');
+    window.history.pushState({}, '', `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}`);
 }
