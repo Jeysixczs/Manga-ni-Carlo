@@ -1216,57 +1216,31 @@ function initializeApp() {
         setupThemeToggle();
         populateYearFilter();
 
-        // Restore from state if available
+        // --- PATCH: DEEP LINK SUPPORT ---
+        // 1. Parse query params
+        const params = getQueryParams();
+        const qMangaId = params.manga;
+        const qChapterId = params.chapter;
+        const qChapterIndex = params.chapterIndex !== undefined ? Number(params.chapterIndex) : null;
+
         let restored = false;
-        const view = sessionStorage.getItem('currentView');
-        const mangaId = sessionStorage.getItem('currentMangaId');
-        const chapterId = sessionStorage.getItem('currentChapterId');
-        const chapterIndex = sessionStorage.getItem('currentChapterIndex');
-        const savedTab = sessionStorage.getItem('currentTab');
-        const lastPage = parseInt(sessionStorage.getItem('galleryPage'), 10);
-
-        // Restore tab selection
-        let validTab = savedTab && document.querySelector(`.nav-tab[data-view="${savedTab}"]`);
-        if (validTab) {
-            STATE.currentTab = savedTab;
-            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-            document.querySelector(`.nav-tab[data-view="${STATE.currentTab}"]`).classList.add('active');
-        } else {
-            STATE.currentTab = 'featured';
-            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-            if (document.querySelector(`.nav-tab[data-view="featured"]`)) {
-                document.querySelector(`.nav-tab[data-view="featured"]`).classList.add('active');
-            }
-        }
-
-        setupTabNavigation();
-        setupEventListeners();
-        setupSmartHeader();
-
-        // Reader view restore
-        if (view === 'reader' && mangaId && chapterId && chapterIndex !== null) {
+        if (qMangaId && qChapterId) {
+            // Deep link: reader
             showView(el.chapterReaderView);
-            fetchMangaDetails(mangaId)
+            fetchMangaDetails(qMangaId)
                 .then(manga => {
                     STATE.currentManga = manga;
-                    return fetchChapters(mangaId, 0, API.CHAPTER_LIMIT);
+                    return fetchChapters(qMangaId, 0, API.CHAPTER_LIMIT);
                 })
                 .then(({ chapters }) => {
                     STATE.allChapters = chapters;
-                    const idx = Number(chapterIndex);
-                    let chapter = chapters.find(c => c.id === chapterId);
-                    if (!chapter && idx >= 0 && idx < chapters.length) {
+                    let idx = qChapterIndex;
+                    let chapter = chapters.find(c => c.id === qChapterId);
+                    if (!chapter && idx !== null && idx >= 0 && idx < chapters.length) {
                         chapter = chapters[idx];
                     }
                     if (chapter) {
-                        // Restore last-read page for this chapter
-                        const savedPageKey = `readerPage_${chapter.id}`;
-                        let pageToScroll = 0;
-                        const savedPage = localStorage.getItem(savedPageKey);
-                        if (savedPage && !isNaN(savedPage)) {
-                            pageToScroll = parseInt(savedPage, 10);
-                        }
-                        showChapterReader(chapter, idx); // showChapterReader will handle restore
+                        showChapterReader(chapter, chapters.indexOf(chapter));
                     } else {
                         showView(el.galleryView);
                         handlePaginationForCurrentTab();
@@ -1277,30 +1251,104 @@ function initializeApp() {
                     handlePaginationForCurrentTab();
                 });
             restored = true;
-        }
-        // Details view restore
-        else if (view === 'details' && mangaId) {
+        } else if (qMangaId) {
+            // Deep link: details
             showView(el.mangaDetailsView);
-            showMangaDetails(mangaId).catch(() => {
+            showMangaDetails(qMangaId).catch(() => {
                 showView(el.galleryView);
                 handlePaginationForCurrentTab();
             });
             restored = true;
         }
-        // Tab (gallery) restore (always fall back to this logic)
+
+
+        // Restore from state if available
         if (!restored) {
-            STATE.currentTab = 'featured'; // Force featured tab (Explore)
-            STATE.page = (lastPage && lastPage > 0) ? lastPage : 1;
-            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-            if (document.querySelector(`.nav-tab[data-view="featured"]`)) {
-                document.querySelector(`.nav-tab[data-view="featured"]`).classList.add('active');
+            const view = sessionStorage.getItem('currentView');
+            const mangaId = sessionStorage.getItem('currentMangaId');
+            const chapterId = sessionStorage.getItem('currentChapterId');
+            const chapterIndex = sessionStorage.getItem('currentChapterIndex');
+            const savedTab = sessionStorage.getItem('currentTab');
+            const lastPage = parseInt(sessionStorage.getItem('galleryPage'), 10);
+
+            // Restore tab selection
+            let validTab = savedTab && document.querySelector(`.nav-tab[data-view="${savedTab}"]`);
+            if (validTab) {
+                STATE.currentTab = savedTab;
+                document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+                document.querySelector(`.nav-tab[data-view="${STATE.currentTab}"]`).classList.add('active');
+            } else {
+                STATE.currentTab = 'featured';
+                document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+                if (document.querySelector(`.nav-tab[data-view="featured"]`)) {
+                    document.querySelector(`.nav-tab[data-view="featured"]`).classList.add('active');
+                }
             }
-            showView(el.galleryView);
-            loadFeaturedContent();
+
+            setupTabNavigation();
+            setupEventListeners();
+            setupSmartHeader();
+
+            // Reader view restore
+            if (view === 'reader' && mangaId && chapterId && chapterIndex !== null) {
+                showView(el.chapterReaderView);
+                fetchMangaDetails(mangaId)
+                    .then(manga => {
+                        STATE.currentManga = manga;
+                        return fetchChapters(mangaId, 0, API.CHAPTER_LIMIT);
+                    })
+                    .then(({ chapters }) => {
+                        STATE.allChapters = chapters;
+                        const idx = Number(chapterIndex);
+                        let chapter = chapters.find(c => c.id === chapterId);
+                        if (!chapter && idx >= 0 && idx < chapters.length) {
+                            chapter = chapters[idx];
+                        }
+                        if (chapter) {
+                            // Restore last-read page for this chapter
+                            const savedPageKey = `readerPage_${chapter.id}`;
+                            let pageToScroll = 0;
+                            const savedPage = localStorage.getItem(savedPageKey);
+                            if (savedPage && !isNaN(savedPage)) {
+                                pageToScroll = parseInt(savedPage, 10);
+                            }
+                            showChapterReader(chapter, idx); // showChapterReader will handle restore
+                        } else {
+                            showView(el.galleryView);
+                            handlePaginationForCurrentTab();
+                        }
+                    })
+                    .catch(() => {
+                        showView(el.galleryView);
+                        handlePaginationForCurrentTab();
+                    });
+                restored = true;
+            }
+            // Details view restore
+            else if (view === 'details' && mangaId) {
+                showView(el.mangaDetailsView);
+                showMangaDetails(mangaId).catch(() => {
+                    showView(el.galleryView);
+                    handlePaginationForCurrentTab();
+                });
+                restored = true;
+            }
+            // Tab (gallery) restore (always fall back to this logic)
+            if (!restored) {
+                STATE.currentTab = 'featured'; // Force featured tab (Explore)
+                STATE.page = (lastPage && lastPage > 0) ? lastPage : 1;
+                document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+                if (document.querySelector(`.nav-tab[data-view="featured"]`)) {
+                    document.querySelector(`.nav-tab[data-view="featured"]`).classList.add('active');
+                }
+                showView(el.galleryView);
+                loadFeaturedContent();
+            }
         }
     } catch (error) {
         if (el.mangaList) el.mangaList.innerHTML = `<div class="error" style="grid-column: 1 / -1;"><h3>Initialization Failed</h3><p>${error.message}</p><button onclick="location.reload()" style="margin-top: 16px; padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer;">Reload Page</button></div>`;
     }
+
 }
 
 // =================== GLOBALS/DEBUG ===================
@@ -1410,16 +1458,39 @@ showChapterReader = async function (chapter, idx) {
 // Update backToGalleryBtn and backToDetailsBtn to reset URL
 if (el.backToGalleryBtn) {
     el.backToGalleryBtn.addEventListener('click', () => {
+        // Reset URL (remove query params)
         window.history.replaceState({}, '', location.origin + location.pathname);
+
+        // Reset navigation state
+        STATE.currentTab = 'featured';
+        STATE.page = 1;
+
+        // Activate the featured tab visually
+        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+        const featuredTab = document.querySelector('.nav-tab[data-view="featured"]');
+        if (featuredTab) featuredTab.classList.add('active');
+
+        // Update label (if present)
+        if (el.labels) el.labels.textContent = 'Explore Manga';
+
+        // Show gallery view and load featured content
+        showView(el.galleryView);
+        loadFeaturedContent();
+
+        // Optionally, reset sessionStorage
+        sessionStorage.setItem('currentTab', STATE.currentTab);
+        sessionStorage.setItem('galleryPage', STATE.page);
     });
 }
 if (el.backToDetailsBtn) {
     el.backToDetailsBtn.addEventListener('click', () => {
         if (STATE.currentManga?.id) {
             updateDeepLink('details', STATE.currentManga.id);
+            showMangaDetails(STATE.currentManga.id);
         } else {
             window.history.replaceState({}, '', location.origin + location.pathname);
+            showView(el.galleryView);
+            loadFeaturedContent();
         }
     });
 }
-
