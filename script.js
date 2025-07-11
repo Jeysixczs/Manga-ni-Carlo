@@ -1368,3 +1368,58 @@ async function renderRandomMangaList(page) {
         STATE.isLoading = false;
     }
 }
+// =================== DEEP LINKING ===================
+
+function getQueryParams() {
+    const params = {};
+    window.location.search.replace(/^\?/, '').split('&').forEach(pair => {
+        if (!pair) return;
+        const [key, val] = pair.split('=');
+        if (key) params[decodeURIComponent(key)] = decodeURIComponent(val || '');
+    });
+    return params;
+}
+
+// Helper: Update URL for deep links (without reload)
+function updateDeepLink(type, mangaId, chapterId = null, chapterIndex = null) {
+    let url = location.origin + location.pathname;
+    if (type === 'details' && mangaId) {
+        url += `?manga=${encodeURIComponent(mangaId)}`;
+    } else if (type === 'reader' && mangaId && chapterId) {
+        url += `?manga=${encodeURIComponent(mangaId)}&chapter=${encodeURIComponent(chapterId)}&chapterIndex=${chapterIndex ?? ''}`;
+    } else {
+        url += '';
+    }
+    window.history.replaceState({}, '', url);
+}
+
+// Patch showMangaDetails for deep link
+const _originalShowMangaDetails = showMangaDetails;
+showMangaDetails = async function(mangaId) {
+    updateDeepLink('details', mangaId);
+    await _originalShowMangaDetails(mangaId);
+};
+
+// Patch showChapterReader for deep link
+const _originalShowChapterReader = showChapterReader;
+showChapterReader = async function(chapter, idx) {
+    updateDeepLink('reader', STATE.currentManga?.id || chapter.mangaId, chapter.id, idx);
+    await _originalShowChapterReader(chapter, idx);
+};
+
+// Update backToGalleryBtn and backToDetailsBtn to reset URL
+if (el.backToGalleryBtn) {
+    el.backToGalleryBtn.addEventListener('click', () => {
+        window.history.replaceState({}, '', location.origin + location.pathname);
+    });
+}
+if (el.backToDetailsBtn) {
+    el.backToDetailsBtn.addEventListener('click', () => {
+        if (STATE.currentManga?.id) {
+            updateDeepLink('details', STATE.currentManga.id);
+        } else {
+            window.history.replaceState({}, '', location.origin + location.pathname);
+        }
+    });
+}
+
