@@ -1461,6 +1461,15 @@ if (el.backToGalleryBtn) {
         // Reset URL (remove query params)
         window.history.replaceState({}, '', location.origin + location.pathname);
 
+        // Remove sessionStorage keys for details/reader
+        sessionStorage.removeItem('currentView');
+        sessionStorage.removeItem('currentMangaId');
+        sessionStorage.removeItem('currentChapterId');
+        sessionStorage.removeItem('currentChapterIndex');
+
+        // Set view to gallery in sessionStorage (optional, for clarity)
+        sessionStorage.setItem('currentView', 'gallery');
+
         // Reset navigation state
         STATE.currentTab = 'featured';
         STATE.page = 1;
@@ -1477,7 +1486,7 @@ if (el.backToGalleryBtn) {
         showView(el.galleryView);
         loadFeaturedContent();
 
-        // Optionally, reset sessionStorage
+        // Optionally, reset sessionStorage tab/page
         sessionStorage.setItem('currentTab', STATE.currentTab);
         sessionStorage.setItem('galleryPage', STATE.page);
     });
