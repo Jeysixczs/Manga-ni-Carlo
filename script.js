@@ -115,29 +115,30 @@ let currentProxyIndex = 0;
 
 // =================== UTILITIES ===================
 function saveViewState(type, data = {}) {
-    localStorage.setItem('currentView', type);
+    // Use sessionStorage for tab/page state
+    sessionStorage.setItem('currentView', type);
     if (type === 'details' && data.mangaId) {
-        localStorage.setItem('currentMangaId', data.mangaId);
+        sessionStorage.setItem('currentMangaId', data.mangaId);
         // Save gallery context
-        localStorage.setItem('galleryPage', STATE.page);
-        localStorage.setItem('galleryTab', STATE.currentTab);
+        sessionStorage.setItem('galleryPage', STATE.page);
+        sessionStorage.setItem('galleryTab', STATE.currentTab);
     } else if (type === 'reader' && data.mangaId && data.chapterId && typeof data.chapterIndex === 'number') {
-        localStorage.setItem('currentMangaId', data.mangaId);
-        localStorage.setItem('currentChapterId', data.chapterId);
-        localStorage.setItem('currentChapterIndex', data.chapterIndex);
+        sessionStorage.setItem('currentMangaId', data.mangaId);
+        sessionStorage.setItem('currentChapterId', data.chapterId);
+        sessionStorage.setItem('currentChapterIndex', data.chapterIndex);
         // Save gallery context
-        localStorage.setItem('galleryPage', STATE.page);
-        localStorage.setItem('galleryTab', STATE.currentTab);
+        sessionStorage.setItem('galleryPage', STATE.page);
+        sessionStorage.setItem('galleryTab', STATE.currentTab);
     } else if (type === 'tab' && data.tab) {
-        localStorage.setItem('currentTab', data.tab);
+        sessionStorage.setItem('currentTab', data.tab);
     }
 }
 
 function clearViewState() {
-    localStorage.removeItem('currentView');
-    localStorage.removeItem('currentMangaId');
-    localStorage.removeItem('currentChapterId');
-    localStorage.removeItem('currentChapterIndex');
+    sessionStorage.removeItem('currentView');
+    sessionStorage.removeItem('currentMangaId');
+    sessionStorage.removeItem('currentChapterId');
+    sessionStorage.removeItem('currentChapterIndex');
 }
 function escapeHTML(str) {
     if (typeof str !== 'string') str = String(str ?? '');
@@ -1144,7 +1145,7 @@ function setupEventListeners() {
         localStorage.setItem('galleryPage', STATE.page);
         localStorage.setItem('galleryTab', STATE.currentTab);
 
-    
+
         // Restore tab and page from state    
         // const lastPage = parseInt(localStorage.getItem('galleryPage'), 10);
         // const lastTab = localStorage.getItem('galleryTab');
@@ -1217,13 +1218,12 @@ function initializeApp() {
 
         // Restore from state if available
         let restored = false;
-        const view = localStorage.getItem('currentView');
-        const mangaId = localStorage.getItem('currentMangaId');
-        const chapterId = localStorage.getItem('currentChapterId');
-        const chapterIndex = localStorage.getItem('currentChapterIndex');
-        // Unified logic for tab restore
-        const savedTab = localStorage.getItem('currentTab');
-        const lastPage = parseInt(localStorage.getItem('galleryPage'), 10);
+        const view = sessionStorage.getItem('currentView');
+        const mangaId = sessionStorage.getItem('currentMangaId');
+        const chapterId = sessionStorage.getItem('currentChapterId');
+        const chapterIndex = sessionStorage.getItem('currentChapterIndex');
+        const savedTab = sessionStorage.getItem('currentTab');
+        const lastPage = parseInt(sessionStorage.getItem('galleryPage'), 10);
 
         // Restore tab selection
         let validTab = savedTab && document.querySelector(`.nav-tab[data-view="${savedTab}"]`);
@@ -1395,14 +1395,14 @@ function updateDeepLink(type, mangaId, chapterId = null, chapterIndex = null) {
 
 // Patch showMangaDetails for deep link
 const _originalShowMangaDetails = showMangaDetails;
-showMangaDetails = async function(mangaId) {
+showMangaDetails = async function (mangaId) {
     updateDeepLink('details', mangaId);
     await _originalShowMangaDetails(mangaId);
 };
 
 // Patch showChapterReader for deep link
 const _originalShowChapterReader = showChapterReader;
-showChapterReader = async function(chapter, idx) {
+showChapterReader = async function (chapter, idx) {
     updateDeepLink('reader', STATE.currentManga?.id || chapter.mangaId, chapter.id, idx);
     await _originalShowChapterReader(chapter, idx);
 };
