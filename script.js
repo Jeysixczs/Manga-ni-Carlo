@@ -729,6 +729,7 @@ async function showChapterReader(chapter, idx) {
     el.chapterInfoBottom.textContent = chapterNum;
     updateChapterNavigation();
     renderChapterPages(chapterData);
+    setupChapterNavigationListeners();
 
     // After rendering pages, scroll to last-read page and track
     setupPageViewTracking(chapter.id);
@@ -1140,23 +1141,11 @@ function setupEventListeners() {
         if (el.labels) el.labels.textContent = 'Explore Manga';
         showView(el.galleryView);
         loadFeaturedContent();
-
         saveViewState('tab', { tab: STATE.currentTab });
         localStorage.setItem('galleryPage', STATE.page);
         localStorage.setItem('galleryTab', STATE.currentTab);
 
 
-        // Restore tab and page from state    
-        // const lastPage = parseInt(localStorage.getItem('galleryPage'), 10);
-        // const lastTab = localStorage.getItem('galleryTab');
-        // if (lastTab && document.querySelector(`.nav-tab[data-view="${lastTab}"]`)) {
-        //     STATE.currentTab = lastTab;
-        //     document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-        //     document.querySelector(`.nav-tab[data-view="${lastTab}"]`).classList.add('active');
-        // }
-        // STATE.page = lastPage && lastPage > 0 ? lastPage : 1;
-        // showView(el.galleryView);
-        // handlePaginationForCurrentTab();
     });
     if (el.backToDetailsBtn) el.backToDetailsBtn.addEventListener('click', () => {
         if (!STATE.currentManga || !STATE.currentManga.id) {
@@ -1485,6 +1474,7 @@ if (el.backToGalleryBtn) {
         // Show gallery view and load featured content
         showView(el.galleryView);
         loadFeaturedContent();
+        restoreGalleryEventListeners();
 
         // Optionally, reset sessionStorage tab/page
         sessionStorage.setItem('currentTab', STATE.currentTab);
@@ -1502,4 +1492,28 @@ if (el.backToDetailsBtn) {
             loadFeaturedContent();
         }
     });
+}
+function setupChapterNavigationListeners() {
+    [el.prevChapterBtn, el.prevChapterBtnBottom].forEach(btn => {
+        if (btn) {
+            btn.onclick = () => {
+                if (STATE.currentChapterIndex > 0) {
+                    showChapterReader(STATE.allChapters[STATE.currentChapterIndex - 1], STATE.currentChapterIndex - 1);
+                }
+            };
+        }
+    });
+    [el.nextChapterBtn, el.nextChapterBtnBottom].forEach(btn => {
+        if (btn) {
+            btn.onclick = () => {
+                if (STATE.currentChapterIndex < STATE.allChapters.length - 1) {
+                    showChapterReader(STATE.allChapters[STATE.currentChapterIndex + 1], STATE.currentChapterIndex + 1);
+                }
+            };
+        }
+    });
+}
+function restoreGalleryEventListeners() {
+    setupTabNavigation();
+    setupEventListeners();
 }
