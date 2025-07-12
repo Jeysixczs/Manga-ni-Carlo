@@ -77,7 +77,7 @@ const STATE = {
         contentRating: 'safe,suggestive,erotica',
         sortBy: 'latestUploadedChapter'
     },
-    featuredTotal: null // moved here to avoid undefined
+    featuredTotal: null
 };
 const API = {
     MAX_LIMIT: 100,
@@ -115,18 +115,15 @@ let currentProxyIndex = 0;
 
 // =================== UTILITIES ===================
 function saveViewState(type, data = {}) {
-    // Use sessionStorage for tab/page state
     sessionStorage.setItem('currentView', type);
     if (type === 'details' && data.mangaId) {
         sessionStorage.setItem('currentMangaId', data.mangaId);
-        // Save gallery context
         sessionStorage.setItem('galleryPage', STATE.page);
         sessionStorage.setItem('galleryTab', STATE.currentTab);
     } else if (type === 'reader' && data.mangaId && data.chapterId && typeof data.chapterIndex === 'number') {
         sessionStorage.setItem('currentMangaId', data.mangaId);
         sessionStorage.setItem('currentChapterId', data.chapterId);
         sessionStorage.setItem('currentChapterIndex', data.chapterIndex);
-        // Save gallery context
         sessionStorage.setItem('galleryPage', STATE.page);
         sessionStorage.setItem('galleryTab', STATE.currentTab);
     } else if (type === 'tab' && data.tab) {
@@ -149,7 +146,6 @@ function escapeHTML(str) {
 
 function showLoading(text = 'Loading...') {
     if (el.loadingOverlay) {
-        //document.querySelector('.loading-text')?.textContent = text;
         el.loadingOverlay.classList.add('active');
     }
 }
@@ -168,7 +164,6 @@ function showView(view) {
 }
 function createFallbackSVG(text, w = 300, h = 400) {
     const svg = `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="#333"/><text x="50%" y="50%" font-family="Arial, sans-serif" font-size="16" fill="#ccc" text-anchor="middle" dominant-baseline="middle">${escapeHTML(text)}</text></svg>`;
-    // btoa may fail on Unicode, so encodeURIComponent first
     function toBase64(str) {
         try {
             return btoa(unescape(encodeURIComponent(str)));
@@ -205,7 +200,6 @@ function safeJSONParse(text) {
             }
         }
     }
-    // Instead of throwing, return null and let caller handle
     return null;
 }
 
@@ -222,7 +216,7 @@ async function processRequestQueue() {
             const response = await fetch(url, options);
             if (!response.ok) {
                 if (response.status === 429) {
-                    await new Promise(r => setTimeout(r, 3000)); // Wait longer on 429
+                    await new Promise(r => setTimeout(r, 3000));
                     requestQueue.unshift({ resolve, reject, url, options });
                     continue;
                 }
@@ -233,7 +227,6 @@ async function processRequestQueue() {
             reject(error);
         }
         if (requestQueue.length) {
-            // Add random jitter to avoid being detected as a bot
             const jitter = Math.floor(Math.random() * API.REQUEST_JITTER);
             await new Promise(r => setTimeout(r, API.REQUEST_DELAY + jitter));
         }
@@ -288,7 +281,6 @@ async function fetchWithProxy(url, isImage = false) {
 }
 
 // =================== API HELPERS ===================
-
 function handlePaginationForCurrentTab() {
     if (STATE.isSearchMode) {
         performSearch(STATE.page);
@@ -357,7 +349,6 @@ function populateYearFilter() {
     }
 }
 
-
 // =================== API CALLS ===================
 async function fetchMangaList(page) {
     const offset = (page - 1) * STATE.limit;
@@ -374,7 +365,6 @@ async function fetchMangaDetails(mangaId) {
     return data.data;
 }
 async function fetchChapters(mangaId, offset = 0, limit = API.CHAPTER_LIMIT) {
-    // Only fetch one page of chapters at a time!
     const apiUrl = `https://api.mangadex.org/chapter?manga=${mangaId}&limit=${limit}&offset=${offset}&translatedLanguage[]=en&order[chapter]=asc&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica`;
     const data = await fetchWithProxy(apiUrl);
     const chaps = Array.isArray(data.data) ? data.data : [];
@@ -519,7 +509,7 @@ async function fetchSearchSuggestions(query) {
         return { title: getMainTitle(attr), author, type: 'manga', id: manga.id };
     });
     STATE.searchSuggestionsCache.set(query, suggestions);
-    pruneSearchSuggestionsCache(); // <-- Limit cache size!
+    pruneSearchSuggestionsCache();
     return suggestions;
 }
 function showSearchSuggestions(suggestions) {
@@ -540,7 +530,6 @@ function showSearchSuggestions(suggestions) {
 }
 function pruneSearchSuggestionsCache(maxEntries = 200) {
     while (STATE.searchSuggestionsCache.size > maxEntries) {
-        // Delete oldest entry (Maps preserve insertion order)
         const firstKey = STATE.searchSuggestionsCache.keys().next().value;
         STATE.searchSuggestionsCache.delete(firstKey);
     }
@@ -596,18 +585,15 @@ function applyFilters() {
     else renderMangaList(1);
 }
 async function performSearch(page = 1) {
-    // Always use the currentSearchQuery for paging, not the current input value!
     const query =
         typeof STATE.currentSearchQuery === "string"
             ? STATE.currentSearchQuery
             : el.searchInput.value.trim();
 
-    // If this is a new search (i.e. not via Next/Prev), update currentSearchQuery
     if (page === 1) {
         STATE.currentSearchQuery = el.searchInput.value.trim();
     }
 
-    // Use the most up-to-date query
     const activeQuery = page === 1 ? STATE.currentSearchQuery : query;
 
     if (!activeQuery && !STATE.filtersActive) { clearSearch(); return; }
@@ -636,7 +622,7 @@ async function performSearch(page = 1) {
 
 // =================== DETAILS/READER ===================
 async function showMangaDetails(mangaId) {
-    saveViewState('details', { mangaId }); // Save state
+    saveViewState('details', { mangaId });
     const mangaDetails = await fetchMangaDetails(mangaId);
     await new Promise(r => setTimeout(r, 300));
 
@@ -708,7 +694,7 @@ function renderChaptersList(chapters) {
             loadMore.disabled = true;
             const more = await fetchChapters(STATE.currentManga.id, STATE.allChapters.length, API.CHAPTER_LIMIT);
             STATE.allChapters.push(...more.chapters);
-            renderChaptersList(STATE.allChapters); // no need to pass total
+            renderChaptersList(STATE.allChapters);
         };
         el.mangaChaptersList.appendChild(loadMore);
     }
@@ -716,7 +702,7 @@ function renderChaptersList(chapters) {
 
 async function showChapterReader(chapter, idx) {
     const mangaId = STATE.currentManga?.id || chapter.mangaId;
-    saveViewState('reader', { mangaId, chapterId: chapter.id, chapterIndex: idx }); // Save state
+    saveViewState('reader', { mangaId, chapterId: chapter.id, chapterIndex: idx });
 
     STATE.currentChapter = chapter;
     STATE.currentChapterIndex = idx;
@@ -730,21 +716,15 @@ async function showChapterReader(chapter, idx) {
     updateChapterNavigation();
     renderChapterPages(chapterData);
     setupChapterNavigationListeners();
-
-    // After rendering pages, scroll to last-read page and track
     setupPageViewTracking(chapter.id);
-
     hideLoading();
     showView(el.chapterReaderView);
     setupSmartHeader();
-    // Do NOT scroll to top, let the observer scroll to last page instead.
 }
 function saveLastReadPage(chapterId, pageIdx) {
     if (!chapterId) return;
     localStorage.setItem(`readerPage_${chapterId}`, String(pageIdx));
 }
-
-// Restore last-read page index from localStorage
 function getLastReadPage(chapterId) {
     if (!chapterId) return 0;
     const val = localStorage.getItem(`readerPage_${chapterId}`);
@@ -752,22 +732,15 @@ function getLastReadPage(chapterId) {
     return 0;
 }
 function setupPageViewTracking(chapterId) {
-    // Clean up previous observer if exists
     if (window._readerPageObserver) window._readerPageObserver.disconnect();
-
     const pageContainers = Array.from(el.chapterPages.querySelectorAll('.page-container'));
     if (!pageContainers.length) return;
-
     let lastPageIdx = getLastReadPage(chapterId);
-
-    // Scroll to last-read page
     setTimeout(() => {
         if (pageContainers[lastPageIdx]) {
             pageContainers[lastPageIdx].scrollIntoView({ behavior: 'auto', block: 'start' });
         }
     }, 10);
-
-    // Use IntersectionObserver to save as user scrolls
     const observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
             if (entry.isIntersecting) {
@@ -778,9 +751,8 @@ function setupPageViewTracking(chapterId) {
             }
         });
     }, {
-        threshold: 0.6 // More than half the page is visible
+        threshold: 0.6
     });
-
     pageContainers.forEach(pc => observer.observe(pc));
     window._readerPageObserver = observer;
 }
@@ -833,8 +805,8 @@ function setupTabNavigation() {
             document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
             STATE.currentTab = tab.dataset.view;
-            saveViewState('tab', { tab: STATE.currentTab }); // Save tab state
-            clearViewState(); // Clear any detail/reader state
+            saveViewState('tab', { tab: STATE.currentTab });
+            clearViewState();
             STATE.isSearchMode = false;
             STATE.currentSearchQuery = '';
             if (el.searchInput) el.searchInput.value = '';
@@ -857,9 +829,8 @@ function setupTabNavigation() {
     });
 }
 
-
 // Add this to the STATE object at the top:
-STATE.featuredTotal = null;
+// STATE.featuredTotal = null;
 
 // Replace your loadFeaturedContent with this:
 async function loadFeaturedContent() {
@@ -868,7 +839,6 @@ async function loadFeaturedContent() {
 
     resetFiltersToDefault();
 
-    // Use cached total if available, else fetch it
     let total = STATE.featuredTotal || 5000;
     let fetchedTotal = false;
 
@@ -880,7 +850,6 @@ async function loadFeaturedContent() {
             STATE.featuredTotal = total;
             fetchedTotal = true;
         } catch {
-            // Ignore count fetch errors, fallback to 5000
             total = 5000;
         }
     }
@@ -935,7 +904,6 @@ async function renderPopularMangaList(page) {
         await batchCards(data.data, el.mangaList, 4);
         updatePaginationInfo(page, STATE.totalManga);
     } catch (error) {
-        console.error("Error fetching popular manga:", error);
         el.mangaList.innerHTML = `<div class="error">Failed to load popular manga: ${escapeHTML(error.message)}</div>`;
     } finally {
         STATE.isLoading = false;
@@ -1135,8 +1103,6 @@ function setupEventListeners() {
     }));
 
     if (el.backToGalleryBtn) el.backToGalleryBtn.addEventListener('click', () => {
-        // Save current gallery view state to localStorage
-
         STATE.currentTab = 'featured';
         STATE.page = 1;
         document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
@@ -1148,8 +1114,6 @@ function setupEventListeners() {
         saveViewState('tab', { tab: STATE.currentTab });
         localStorage.setItem('galleryPage', STATE.page);
         localStorage.setItem('galleryTab', STATE.currentTab);
-
-
     });
     if (el.backToDetailsBtn) el.backToDetailsBtn.addEventListener('click', () => {
         if (!STATE.currentManga || !STATE.currentManga.id) {
@@ -1164,7 +1128,6 @@ function setupEventListeners() {
         if (!el.searchInput.contains(e.target) && !el.searchSuggestions.contains(e.target)) hideSearchSuggestions();
     });
 
-    // For label text on tabs
     document.querySelectorAll('.nav-tab').forEach(tab => {
         tab.addEventListener('click', function () {
             const view = this.getAttribute('data-view');
@@ -1183,8 +1146,6 @@ function setupEventListeners() {
 }
 
 // =================== INIT ===================
-
-
 function initializeApp() {
     showLoading();
     const required = [
@@ -1202,8 +1163,6 @@ function initializeApp() {
         setupThemeToggle();
         populateYearFilter();
 
-        // --- PATCH: DEEP LINK SUPPORT ---
-        // 1. Parse query params
         const params = getQueryParams();
         const qMangaId = params.manga;
         const qChapterId = params.chapter;
@@ -1211,7 +1170,6 @@ function initializeApp() {
 
         let restored = false;
         if (qMangaId && qChapterId) {
-            // Deep link: reader
             showView(el.chapterReaderView);
             fetchMangaDetails(qMangaId)
                 .then(manga => {
@@ -1238,7 +1196,6 @@ function initializeApp() {
                 });
             restored = true;
         } else if (qMangaId) {
-            // Deep link: details
             showView(el.mangaDetailsView);
             showMangaDetails(qMangaId).catch(() => {
                 showView(el.galleryView);
@@ -1247,8 +1204,6 @@ function initializeApp() {
             restored = true;
         }
 
-
-        // Restore from state if available
         if (!restored) {
             const view = sessionStorage.getItem('currentView');
             const mangaId = sessionStorage.getItem('currentMangaId');
@@ -1257,7 +1212,6 @@ function initializeApp() {
             const savedTab = sessionStorage.getItem('currentTab');
             const lastPage = parseInt(sessionStorage.getItem('galleryPage'), 10);
 
-            // Restore tab selection
             let validTab = savedTab && document.querySelector(`.nav-tab[data-view="${savedTab}"]`);
             if (validTab) {
                 STATE.currentTab = savedTab;
@@ -1275,7 +1229,6 @@ function initializeApp() {
             setupEventListeners();
             setupSmartHeader();
 
-            // Reader view restore
             if (view === 'reader' && mangaId && chapterId && chapterIndex !== null) {
                 showView(el.chapterReaderView);
                 fetchMangaDetails(mangaId)
@@ -1291,14 +1244,13 @@ function initializeApp() {
                             chapter = chapters[idx];
                         }
                         if (chapter) {
-                            // Restore last-read page for this chapter
                             const savedPageKey = `readerPage_${chapter.id}`;
                             let pageToScroll = 0;
                             const savedPage = localStorage.getItem(savedPageKey);
                             if (savedPage && !isNaN(savedPage)) {
                                 pageToScroll = parseInt(savedPage, 10);
                             }
-                            showChapterReader(chapter, idx); // showChapterReader will handle restore
+                            showChapterReader(chapter, idx);
                         } else {
                             showView(el.galleryView);
                             handlePaginationForCurrentTab();
@@ -1309,9 +1261,7 @@ function initializeApp() {
                         handlePaginationForCurrentTab();
                     });
                 restored = true;
-            }
-            // Details view restore
-            else if (view === 'details' && mangaId) {
+            } else if (view === 'details' && mangaId) {
                 showView(el.mangaDetailsView);
                 showMangaDetails(mangaId).catch(() => {
                     showView(el.galleryView);
@@ -1319,9 +1269,8 @@ function initializeApp() {
                 });
                 restored = true;
             }
-            // Tab (gallery) restore (always fall back to this logic)
             if (!restored) {
-                STATE.currentTab = 'featured'; // Force featured tab (Explore)
+                STATE.currentTab = 'featured';
                 STATE.page = (lastPage && lastPage > 0) ? lastPage : 1;
                 document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
                 if (document.querySelector(`.nav-tab[data-view="featured"]`)) {
@@ -1368,7 +1317,6 @@ window.testUrl = function (url) {
     fetchWithProxy(url).then(data => { console.log('✅ Test successful:', data); }).catch(error => { console.error('❌ Test failed:', error); });
 };
 
-
 // =================== ERROR HANDLING ===================
 window.addEventListener('error', (event) => { hideLoading(); });
 window.addEventListener('unhandledrejection', (event) => { hideLoading(); event.preventDefault(); });
@@ -1402,8 +1350,8 @@ async function renderRandomMangaList(page) {
         STATE.isLoading = false;
     }
 }
-// =================== DEEP LINKING ===================
 
+// =================== DEEP LINKING ===================
 function getQueryParams() {
     const params = {};
     window.location.search.replace(/^\?/, '').split('&').forEach(pair => {
@@ -1444,36 +1392,21 @@ showChapterReader = async function (chapter, idx) {
 // Update backToGalleryBtn and backToDetailsBtn to reset URL
 if (el.backToGalleryBtn) {
     el.backToGalleryBtn.addEventListener('click', () => {
-        // Reset URL (remove query params)
         window.history.replaceState({}, '', location.origin + location.pathname);
-
-        // Remove sessionStorage keys for details/reader
         sessionStorage.removeItem('currentView');
         sessionStorage.removeItem('currentMangaId');
         sessionStorage.removeItem('currentChapterId');
         sessionStorage.removeItem('currentChapterIndex');
-
-        // Set view to gallery in sessionStorage (optional, for clarity)
         sessionStorage.setItem('currentView', 'gallery');
-
-        // Reset navigation state
         STATE.currentTab = 'featured';
         STATE.page = 1;
-
-        // Activate the featured tab visually
         document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
         const featuredTab = document.querySelector('.nav-tab[data-view="featured"]');
         if (featuredTab) featuredTab.classList.add('active');
-
-        // Update label (if present)
         if (el.labels) el.labels.textContent = 'Explore Manga';
-
-        // Show gallery view and load featured content
         showView(el.galleryView);
         loadFeaturedContent();
         restoreGalleryEventListeners();
-
-        // Optionally, reset sessionStorage tab/page
         sessionStorage.setItem('currentTab', STATE.currentTab);
         sessionStorage.setItem('galleryPage', STATE.page);
     });
