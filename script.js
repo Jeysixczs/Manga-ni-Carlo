@@ -487,12 +487,12 @@ async function renderMangaList(page) {
         STATE.totalManga = total;
         if (!mangaList.length) {
             el.mangaList.innerHTML = '<div class="error">No manga found for this page.</div>';
-            updatePaginationInfo(page, total);
+            //updatePaginationInfo(page, total);
             return;
         }
         el.mangaList.innerHTML = '';
         await batchCards(mangaList, el.mangaList, 4);
-        updatePaginationInfo(page, total);
+        //updatePaginationInfo(page, total);
     } catch (err) {
         el.mangaList.innerHTML = `<div class="error">Failed to load manga collection<br><small>${escapeHTML(err.message)}</small><br><br><button onclick="location.reload()">Reload Page</button></div>`;
     } finally {
@@ -622,7 +622,7 @@ async function performSearch(page = 1) {
         if (activeQuery) el.clearSearchBtn.style.display = 'flex';
         if (!data.data?.length) {
             el.mangaList.innerHTML = `<div class="error" style="grid-column: 1 / -1;"><h3>No manga found</h3><p>Try adjusting your search terms or filters</p></div>`;
-            updatePaginationInfo(page, STATE.totalManga);
+           updatePaginationInfo(page, STATE.totalManga);
             return;
         }
         el.mangaList.innerHTML = '';
@@ -815,11 +815,25 @@ function updateChapterNavigation() {
     [el.prevChapterBtn, el.prevChapterBtnBottom].forEach(btn => btn && (btn.disabled = !hasPrev));
     [el.nextChapterBtn, el.nextChapterBtnBottom].forEach(btn => btn && (btn.disabled = !hasNext));
 }
-function updatePaginationInfo(page, total) {
-    const maxPages = Math.max(1, Math.ceil(total / STATE.limit));
+function updatePaginationInfo(page, total, forceSinglePage = false) {
+    let maxPages = Math.max(1, Math.ceil(total / STATE.limit));
+    if (forceSinglePage) maxPages = 1;
+
     const pageText = `Page ${page} of ${maxPages}`;
+
+    // Always update top info for all tabs except featured (Explore)
     if (el.pageInfo) el.pageInfo.textContent = pageText;
-    if (el.pageInfoBottom) el.pageInfoBottom.textContent = pageText;
+
+    // For Explore (featured/random), hide the bottom page info
+    if (STATE.currentTab === 'featured') {
+        if (el.pageInfoBottom) el.pageInfoBottom.style.display = 'none';
+    } else {
+        if (el.pageInfoBottom) {
+            el.pageInfoBottom.textContent = pageText;
+            el.pageInfoBottom.style.display = '';
+        }
+    }
+
     const isFirst = page <= 1, isLast = page >= maxPages;
     [el.prevPageBtn, el.prevPageBtnBottom].forEach(btn => btn && (btn.disabled = isFirst));
     [el.nextPageBtn, el.nextPageBtnBottom].forEach(btn => btn && (btn.disabled = isLast));
@@ -841,14 +855,29 @@ function setupTabNavigation() {
             if (el.clearSearchBtn) el.clearSearchBtn.style.display = 'none';
             if (el.searchResultsInfo) el.searchResultsInfo.style.display = 'none';
             hideSearchSuggestions();
-            STATE.page = 1;
+            STATE.page = 1; // RESET page to 1
+
             try {
                 switch (STATE.currentTab) {
-                    case 'featured': await loadFeaturedContent(); break;
-                    case 'popular': await renderPopularMangaList(1); break;
-                    case 'recent-updates': await renderRecentUpdatesList(1); break;
-                    case 'new-releases': await renderNewReleasesList(1); break;
-                    default: await loadFeaturedContent();
+                    case 'featured':
+                        await loadFeaturedContent();
+                       // updatePaginationInfo(STATE.page, 10, true); // Only 1 page for featured
+                        break;
+                    case 'popular':
+                        await renderPopularMangaList(STATE.page);
+                       // updatePaginationInfo(STATE.page, STATE.totalManga);
+                        break;
+                    case 'recent-updates':
+                        await renderRecentUpdatesList(STATE.page);
+                        //updatePaginationInfo(STATE.page, STATE.totalManga);
+                        break;
+                    case 'new-releases':
+                        await renderNewReleasesList(STATE.page);
+                      //  updatePaginationInfo(STATE.page, STATE.totalManga);
+                        break;
+                    default:
+                        await loadFeaturedContent();
+                       // updatePaginationInfo(STATE.page, 10, true);
                 }
             } catch (error) {
                 handleTabError(error);
@@ -899,7 +928,7 @@ async function loadFeaturedContent() {
             return;
         }
         await batchCards(data.data, el.mangaList, 1);
-        updatePaginationInfo(1, STATE.totalManga);
+        
     } catch (error) {
         el.mangaList.innerHTML = `<div class="error">Failed to load random manga: ${escapeHTML(error.message)}</div>`;
     } finally {
@@ -927,13 +956,13 @@ async function renderPopularMangaList(page) {
         STATE.totalManga = data.total || 0;
         if (!data.data?.length) {
             el.mangaList.innerHTML = '<div class="error-message">No popular manga found</div>';
-            updatePaginationInfo(page, 0);
+//updatePaginationInfo(page, 0);
             hideLoading();
             return;
         }
         el.mangaList.innerHTML = '';
         await batchCards(data.data, el.mangaList, 4);
-        updatePaginationInfo(page, STATE.totalManga);
+      //  updatePaginationInfo(page, STATE.totalManga);
     } catch (error) {
         console.error("Error fetching popular manga:", error);
         el.mangaList.innerHTML = `<div class="error">Failed to load popular manga: ${escapeHTML(error.message)}</div>`;
@@ -954,13 +983,13 @@ async function renderRecentUpdatesList(page) {
         STATE.totalManga = data.total || 0;
         if (!data.data?.length) {
             el.mangaList.innerHTML = '<div class="error-message">No recent updates found</div>';
-            updatePaginationInfo(page, 0);
+           // updatePaginationInfo(page, 0);
             hideLoading();
             return;
         }
         el.mangaList.innerHTML = '';
         await batchCards(data.data, el.mangaList, 4);
-        updatePaginationInfo(page, STATE.totalManga);
+       // updatePaginationInfo(page, STATE.totalManga);
     } catch (error) {
         el.mangaList.innerHTML = `<div class="error">Failed to load recent updates: ${escapeHTML(error.message)}</div>`;
     } finally {
@@ -980,13 +1009,13 @@ async function renderNewReleasesList(page) {
         STATE.totalManga = data.total || 0;
         if (!data.data?.length) {
             el.mangaList.innerHTML = '<div class="error-message">No new releases found</div>';
-            updatePaginationInfo(page, 0);
+           // updatePaginationInfo(page, 0);
             hideLoading();
             return;
         }
         el.mangaList.innerHTML = '';
         await batchCards(data.data, el.mangaList, 4);
-        updatePaginationInfo(page, STATE.totalManga);
+      //  updatePaginationInfo(page, STATE.totalManga);
     } catch (error) {
         el.mangaList.innerHTML = `<div class="error">Failed to load new releases: ${escapeHTML(error.message)}</div>`;
     } finally {
@@ -1397,12 +1426,12 @@ async function renderRandomMangaList(page) {
         STATE.totalManga = total;
         if (!mangaList.length) {
             el.mangaList.innerHTML = '<div class="error">No random manga found for this page.</div>';
-            updatePaginationInfo(page, total);
+          //  updatePaginationInfo(page, total);
             return;
         }
         el.mangaList.innerHTML = '';
         await batchCards(mangaList, el.mangaList, 4);
-        updatePaginationInfo(page, total);
+       // updatePaginationInfo(page, total);
     } catch (error) {
         el.mangaList.innerHTML = `<div class="error">Failed to load random manga: ${error.message}</div>`;
     } finally {
@@ -1518,6 +1547,8 @@ function setupChapterNavigationListeners() {
     });
 }
 function restoreGalleryEventListeners() {
+    if (window._galleryListenersSetup) return;
     setupTabNavigation();
     setupEventListeners();
+    window._galleryListenersSetup = true;
 }
