@@ -863,6 +863,8 @@ STATE.featuredTotal = null;
 
 // Replace your loadFeaturedContent with this:
 async function loadFeaturedContent() {
+    if (STATE.isLoading) return;
+    STATE.isLoading = true;
 
     resetFiltersToDefault();
 
@@ -903,6 +905,8 @@ async function loadFeaturedContent() {
     } finally {
         hideLoading();
     }
+    STATE.isLoading = false;
+
 }
 async function fetchRandomMangaList(page) {
     const offset = STATE.randomOffset + ((page - 1) * STATE.limit);
