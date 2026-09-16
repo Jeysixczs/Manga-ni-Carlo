@@ -6,9 +6,30 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { ProxyAgent } from 'undici';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MANGADEX_API = 'https://api.mangadex.org';
+
+// Optional static-IP proxy for every upstream MangaDex/image call. Vercel
+// functions egress from a shared, rotating IP pool, which is what makes
+// Cloudflare's per-IP blocking of that pool intermittent and hard to retry
+// around (see fetchUpstreamJson below). Pointing this at a small proxy you
+// control — a cheap VPS, or a service like QuotaGuard/Fixie — gives
+// MangaDex's Cloudflare a single stable IP to see instead, which is a real
+// fix rather than a mitigation. Set UPSTREAM_PROXY_URL (falls back to the
+// conventional HTTPS_PROXY/https_proxy) to something like
+// "http://user:pass@proxy-host:port" to enable it; leave it unset and every
+// fetch() below behaves exactly as it did before — a direct connection.
+const PROXY_URL = process.env.UPSTREAM_PROXY_URL || process.env.HTTPS_PROXY || process.env.https_proxy || null;
+const proxyDispatcher = PROXY_URL ? new ProxyAgent(PROXY_URL) : null;
+if (proxyDispatcher) {
+    try {
+        console.log(`[proxy] Routing upstream requests through configured proxy (${new URL(PROXY_URL).hostname})`);
+    } catch {
+        console.log('[proxy] Routing upstream requests through configured proxy');
+    }
+}
 
 // Every outbound request gets a deadline. Without one, a stalled upstream
 // connection keeps its socket, its response buffer and the whole Express
@@ -174,6 +195,7 @@ async function fetchUpstreamJson(url, { cache = true } = {}) {
                         'User-Agent': 'ManhwaNiCarlo/2.0 (+server-side proxy)'
                     },
                     signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+                    ...(proxyDispatcher ? { dispatcher: proxyDispatcher } : {}),
                 });
                 const body = await upstream.text();
                 const result = { body, status: upstream.status };
@@ -371,6 +393,7 @@ app.get('/api/image', async (req, res) => {
                         'Referer': 'https://mangadex.org/',
                     },
                     signal: controller.signal,
+                    ...(proxyDispatcher ? { dispatcher: proxyDispatcher } : {}),
                 });
             } catch (err) {
                 if (controller.signal.aborted) throw err; // real cancellation/timeout — stop retrying
@@ -418,6 +441,7 @@ app.get('/api/health', (_req, res) => res.json({
     ok: true,
     cache: { entries: jsonCache.map.size, bytes: jsonCache.bytes },
     staleCache: { entries: staleCache.map.size, bytes: staleCache.bytes },
+    proxied: Boolean(proxyDispatcher),
 }));
 
 // ---- Serve the built React client (traditional Node deployment only) ----

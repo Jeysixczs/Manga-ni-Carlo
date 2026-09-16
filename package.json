@@ -1,21 +1,20 @@
 {
-  "name": "manhwa-ni-carlo",
+  "name": "manhwa-ni-carlo-server",
   "private": true,
   "version": "2.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
-    "install:all": "npm install && npm install --prefix server && npm install --prefix client",
-    "dev": "concurrently -k -n SERVER,CLIENT -c green,cyan \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
-    "build": "npm run build --prefix client",
-    "start": "npm run build && npm run start --prefix server"
+    "dev": "node --watch index.js",
+    "start": "node index.js"
   },
   "dependencies": {
     "express": "^4.21.2",
     "cors": "^2.8.5",
     "compression": "^1.7.5",
-    "express-rate-limit": "^7.4.1"
-  },
-  "devDependencies": {
-    "concurrently": "^9.1.0"
+    "express-rate-limit": "^7.4.1",
+    "undici": "^6.21.0"
   }
 }
