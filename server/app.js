@@ -192,11 +192,16 @@ async function proxyToMangaDex(upstreamPath, req, res, { maxAge = 60, cache = tr
         res.send(body);
     } catch (err) {
         const timedOut = err.name === 'TimeoutError' || err.name === 'AbortError';
-        console.error(`[proxy] ${url} failed:`, err.message);
+        // Node's fetch wraps the real network error (DNS failure, TLS error,
+        // connection refused, etc.) in err.cause and leaves err.message as the
+        // unhelpful literal string "fetch failed" — log the cause or this is
+        // invisible in every log line.
+        const causeDetail = err.cause ? `${err.cause.code || err.cause.name || ''} ${err.cause.message || err.cause}`.trim() : null;
+        console.error(`[proxy] ${url} failed:`, err.message, causeDetail ? `| cause: ${causeDetail}` : '');
         if (res.headersSent) return res.destroy();
         res.status(timedOut ? 504 : 502).json({
             error: timedOut ? 'Upstream MangaDex request timed out' : 'Upstream MangaDex request failed',
-            detail: err.message,
+            detail: causeDetail || err.message,
         });
     }
 }
