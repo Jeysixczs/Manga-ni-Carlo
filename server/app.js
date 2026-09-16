@@ -147,19 +147,27 @@ async function fetchUpstreamJson(url, { cache = true } = {}) {
 }
 
 // Vercel's catch-all function (api/[...path].js) folds the matched route
-// segments back into the query string under the key `___path` — a request for
-// /api/manga?limit=10 arrives here as /api/manga?limit=10&___path=manga.
-// MangaDex's query schema sets additionalProperties:false, so that single
-// unexpected key fails validation and the whole request comes back 400. The
-// injected keys must be dropped before forwarding. This is a no-op for the
-// plain Node deployment, where nothing injects them.
-const INJECTED_QUERY_KEYS = new Set(['path', '___path']);
+// segments back into the query string — a request for /api/manga?limit=10
+// arrives here with an extra key identifying the matched route (seen so far
+// as `path`, `___path`, and other underscore/`nxtP`-prefixed names, and the
+// exact name has changed across deployments). MangaDex's query schema sets
+// additionalProperties:false, so ANY unexpected key fails validation and the
+// whole request comes back 400. Denylisting the names we've observed is
+// fragile — the safe fix is to allowlist only the query keys this app
+// actually sends, and drop everything else, whatever Vercel calls it. This
+// is a no-op for the plain Node deployment, where nothing injects extra keys.
+const ALLOWED_QUERY_BASE_NAMES = new Set([
+    'limit', 'offset', 'title', 'includes', 'contentRating', 'status', 'year',
+    'order', 'manga', 'translatedLanguage',
+]);
 function buildUpstreamSearch(req) {
     const qIndex = req.originalUrl.indexOf('?');
     if (qIndex === -1) return '';
     const params = new URLSearchParams(req.originalUrl.slice(qIndex + 1));
     for (const key of [...params.keys()]) {
-        if (INJECTED_QUERY_KEYS.has(key) || key.startsWith('__') || key.startsWith('nxtP')) {
+        // 'order[latestUploadedChapter]' -> base name 'order'; 'includes[]' -> 'includes'.
+        const baseName = key.split('[')[0];
+        if (!ALLOWED_QUERY_BASE_NAMES.has(baseName)) {
             params.delete(key);
         }
     }
