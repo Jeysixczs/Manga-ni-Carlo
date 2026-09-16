@@ -120,6 +120,21 @@ const jsonCache = new TtlCache({
     maxBytes: JSON_CACHE_MAX_BYTES,
 });
 
+// MangaDex sits behind Cloudflare, and Vercel functions share a rotating
+// outbound-IP pool across every project hosted there. When that shared IP
+// gets rate-limited/flagged, Cloudflare answers with an HTML block/challenge
+// page instead of MangaDex's real JSON — and because a single invocation's
+// retries all go out from that same flagged IP, retrying alone often can't
+// recover within one request. This second, much longer-lived cache holds the
+// last *known-good* (2xx) response for a URL so a transient block degrades
+// to briefly-stale data instead of a hard error in the client.
+const STALE_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+const staleCache = new TtlCache({
+    ttl: STALE_CACHE_TTL_MS,
+    maxEntries: JSON_CACHE_MAX_ENTRIES,
+    maxBytes: JSON_CACHE_MAX_BYTES,
+});
+
 // Single-flight: if ten browsers ask for the same manga list at once we make
 // one upstream request, not ten. Entries are always removed in a finally block.
 const inFlight = new Map();
@@ -165,6 +180,7 @@ async function fetchUpstreamJson(url, { cache = true } = {}) {
 
                 if (upstream.ok) {
                     if (cache) jsonCache.set(url, result);
+                    staleCache.set(url, result);
                     return result;
                 }
 
@@ -174,11 +190,24 @@ async function fetchUpstreamJson(url, { cache = true } = {}) {
                 // MangaDex actually answering (e.g. a genuine 404), so accept
                 // it immediately rather than retrying something that will
                 // just fail the same way again.
-                if (!looksLikeJson(body) && attempt < UPSTREAM_MAX_RETRIES) {
+                if (!looksLikeJson(body)) {
                     lastResult = result;
-                    console.error(`[proxy] ${url} -> ${upstream.status} with non-JSON body, retrying (attempt ${attempt + 1}/${UPSTREAM_MAX_RETRIES})`);
-                    await sleep(UPSTREAM_RETRY_BASE_MS * 2 ** attempt);
-                    continue;
+                    if (attempt < UPSTREAM_MAX_RETRIES) {
+                        console.error(`[proxy] ${url} -> ${upstream.status} with non-JSON body, retrying (attempt ${attempt + 1}/${UPSTREAM_MAX_RETRIES})`);
+                        await sleep(UPSTREAM_RETRY_BASE_MS * 2 ** attempt);
+                        continue;
+                    }
+                    // Retries exhausted and it's still not real JSON — almost
+                    // certainly a Cloudflare/WAF block rather than MangaDex
+                    // actually answering. Serve the last known-good response
+                    // for this exact URL if we have one, rather than surface
+                    // this as a hard failure to the client.
+                    const stale = staleCache.get(url);
+                    if (stale) {
+                        console.error(`[proxy] ${url} -> ${upstream.status} with non-JSON body after retries; serving stale cached response instead`);
+                        return stale;
+                    }
+                    continue; // fall through to the loop end (no more attempts left)
                 }
 
                 return result;
@@ -190,11 +219,17 @@ async function fetchUpstreamJson(url, { cache = true } = {}) {
                     await sleep(UPSTREAM_RETRY_BASE_MS * 2 ** attempt);
                     continue;
                 }
+                const stale = staleCache.get(url);
+                if (stale) {
+                    console.error(`[proxy] ${url} threw after retries (${err.message}); serving stale cached response instead`);
+                    return stale;
+                }
                 throw err;
             }
         }
 
-        // Every attempt returned a non-JSON error body; surface the last one.
+        // Every attempt returned a non-JSON error body and no stale fallback
+        // was available; surface the last one.
         if (lastResult) return lastResult;
         throw lastErr;
     })();
@@ -379,7 +414,11 @@ app.get('/api/image', async (req, res) => {
     }
 });
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, cache: { entries: jsonCache.map.size, bytes: jsonCache.bytes } }));
+app.get('/api/health', (_req, res) => res.json({
+    ok: true,
+    cache: { entries: jsonCache.map.size, bytes: jsonCache.bytes },
+    staleCache: { entries: staleCache.map.size, bytes: staleCache.bytes },
+}));
 
 // ---- Serve the built React client (traditional Node deployment only) ----
 // On Vercel the static build is served straight from its CDN/output directory
