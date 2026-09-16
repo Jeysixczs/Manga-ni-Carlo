@@ -6,9 +6,11 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "scripts": {
-    "dev": "node --watch index.js",
-    "start": "node index.js"
+   "scripts": {
+    "install:all": "npm install && npm install --prefix server && npm install --prefix client",
+    "dev": "concurrently -k -n SERVER,CLIENT -c green,cyan \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "build": "npm run build --prefix client",
+    "start": "npm run build && npm run start --prefix server"
   },
   "dependencies": {
     "express": "^4.21.2",
