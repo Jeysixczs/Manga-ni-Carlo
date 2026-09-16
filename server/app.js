@@ -162,6 +162,12 @@ const inFlight = new Map();
 
 const app = express();
 app.set('etag', 'strong');
+// On Vercel (and any reverse proxy) the client IP arrives in X-Forwarded-For.
+// Without this, express-rate-limit sees every request as coming from the same
+// proxy address and the 180/min budget below becomes a *global* limit instead
+// of a per-client one. Trust exactly one hop — trusting all of them would let
+// a client spoof the header and dodge the limiter entirely.
+app.set('trust proxy', 1);
 app.use(compression({
     filter: (req, res) => (req.path === '/api/image' ? false : compression.filter(req, res))
 }));
