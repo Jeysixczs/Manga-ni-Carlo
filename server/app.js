@@ -146,16 +146,38 @@ async function fetchUpstreamJson(url, { cache = true } = {}) {
     }
 }
 
+// Vercel's catch-all function (api/[...path].js) folds the matched route
+// segments back into the query string — a request for /api/manga?limit=10
+// arrives here as /api/manga?limit=10&path=manga. MangaDex validates query
+// parameters strictly and answers 400 for ANY parameter it doesn't recognise,
+// so those injected keys must be dropped before the request is forwarded.
+// This is a no-op for the plain Node deployment, where nothing injects them.
+const INJECTED_QUERY_KEYS = new Set(['path']);
+function buildUpstreamSearch(req) {
+    const qIndex = req.originalUrl.indexOf('?');
+    if (qIndex === -1) return '';
+    const params = new URLSearchParams(req.originalUrl.slice(qIndex + 1));
+    for (const key of [...params.keys()]) {
+        if (INJECTED_QUERY_KEYS.has(key) || key.startsWith('__') || key.startsWith('nxtP')) {
+            params.delete(key);
+        }
+    }
+    const search = params.toString();
+    return search ? `?${search}` : '';
+}
+
 /**
  * Forwards a request to MangaDex, preserving the original query string.
  * This runs server-side, so there's no CORS problem and no need to bounce
  * through third-party CORS proxies the way the original client-only app did.
  */
 async function proxyToMangaDex(upstreamPath, req, res, { maxAge = 60, cache = true } = {}) {
-    const search = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
-    const url = `${MANGADEX_API}${upstreamPath}${search}`;
+    const url = `${MANGADEX_API}${upstreamPath}${buildUpstreamSearch(req)}`;
     try {
         const { body, status } = await fetchUpstreamJson(url, { cache });
+        // A 4xx from MangaDex means the request we built was wrong, and its body
+        // names the offending parameter. Without this the reason never surfaces.
+        if (status >= 400) console.error(`[proxy] ${url} -> ${status}: ${body.slice(0, 500)}`);
         if (res.writableEnded) return;
         res.status(status);
         res.type('application/json');
