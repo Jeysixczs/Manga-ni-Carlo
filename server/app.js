@@ -147,12 +147,13 @@ async function fetchUpstreamJson(url, { cache = true } = {}) {
 }
 
 // Vercel's catch-all function (api/[...path].js) folds the matched route
-// segments back into the query string — a request for /api/manga?limit=10
-// arrives here as /api/manga?limit=10&path=manga. MangaDex validates query
-// parameters strictly and answers 400 for ANY parameter it doesn't recognise,
-// so those injected keys must be dropped before the request is forwarded.
-// This is a no-op for the plain Node deployment, where nothing injects them.
-const INJECTED_QUERY_KEYS = new Set(['path']);
+// segments back into the query string under the key `___path` — a request for
+// /api/manga?limit=10 arrives here as /api/manga?limit=10&___path=manga.
+// MangaDex's query schema sets additionalProperties:false, so that single
+// unexpected key fails validation and the whole request comes back 400. The
+// injected keys must be dropped before forwarding. This is a no-op for the
+// plain Node deployment, where nothing injects them.
+const INJECTED_QUERY_KEYS = new Set(['path', '___path']);
 function buildUpstreamSearch(req) {
     const qIndex = req.originalUrl.indexOf('?');
     if (qIndex === -1) return '';
