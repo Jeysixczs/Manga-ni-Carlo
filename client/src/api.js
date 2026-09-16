@@ -14,7 +14,11 @@ async function apiFetch(path, signal) {
         data = await res.json();
     } catch {
         if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-        throw new Error('Received an invalid response from the server.');
+        // The server already retries transient upstream hiccups (see
+        // fetchUpstreamJson in server/app.js), so getting here means those
+        // retries were exhausted too. Point people at "try again" rather
+        // than a dead-end parse error.
+        throw new Error('The manga source is temporarily unreachable. Please try again in a moment.');
     }
     if (!res.ok) {
         throw new Error(data?.error || data?.detail || `Request failed (${res.status})`);

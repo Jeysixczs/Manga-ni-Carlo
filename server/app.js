@@ -17,6 +17,30 @@ const MANGADEX_API = 'https://api.mangadex.org';
 const UPSTREAM_TIMEOUT_MS = 10_000;
 const IMAGE_TIMEOUT_MS = 30_000;
 
+// MangaDex bans/rate-limits at the IP level (per their own docs), and
+// serverless platforms like Vercel share a rotating outbound-IP pool across
+// every project deployed there. So a request can fail not because the
+// resource is missing, but because *this particular invocation* happened to
+// egress from a currently-flagged IP — the next invocation, from a different
+// IP, succeeds against the exact same URL. A couple of quick retries absorbs
+// that flakiness instead of surfacing it to the user as a permanent error.
+const UPSTREAM_MAX_RETRIES = 2;
+const UPSTREAM_RETRY_BASE_MS = 300;
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// MangaDex's real API errors are always JSON, e.g. {"result":"error","errors":[...]}.
+// A non-JSON body on a non-2xx (typically an HTML Cloudflare/WAF block or
+// challenge page) is a strong signal this response didn't actually come from
+// the MangaDex application layer at all — that's the case worth retrying,
+// as opposed to a genuine "this manga doesn't exist" JSON 404.
+function looksLikeJson(body) {
+    const trimmed = body.trimStart();
+    return trimmed.startsWith('{') || trimmed.startsWith('[');
+}
+
 const JSON_CACHE_TTL_MS = 60_000;
 const JSON_CACHE_MAX_ENTRIES = 400;
 const JSON_CACHE_MAX_BYTES = 8 * 1024 * 1024;
@@ -124,18 +148,55 @@ async function fetchUpstreamJson(url, { cache = true } = {}) {
     if (pending) return pending;
 
     const task = (async () => {
-        const upstream = await fetch(url, {
-            headers: {
-                'Accept': 'application/json',
-                'User-Agent': 'ManhwaNiCarlo/2.0 (+server-side proxy)'
-            },
-            signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-        });
-        const body = await upstream.text();
-        const result = { body, status: upstream.status };
-        // Only successful responses are worth caching; errors should be retried.
-        if (cache && upstream.ok) jsonCache.set(url, result);
-        return result;
+        let lastResult = null;
+        let lastErr = null;
+
+        for (let attempt = 0; attempt <= UPSTREAM_MAX_RETRIES; attempt++) {
+            try {
+                const upstream = await fetch(url, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'User-Agent': 'ManhwaNiCarlo/2.0 (+server-side proxy)'
+                    },
+                    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+                });
+                const body = await upstream.text();
+                const result = { body, status: upstream.status };
+
+                if (upstream.ok) {
+                    if (cache) jsonCache.set(url, result);
+                    return result;
+                }
+
+                // A non-2xx with a non-JSON body is very likely an edge block/
+                // challenge page rather than MangaDex's own error response —
+                // worth a retry. A non-2xx with a real JSON error body is
+                // MangaDex actually answering (e.g. a genuine 404), so accept
+                // it immediately rather than retrying something that will
+                // just fail the same way again.
+                if (!looksLikeJson(body) && attempt < UPSTREAM_MAX_RETRIES) {
+                    lastResult = result;
+                    console.error(`[proxy] ${url} -> ${upstream.status} with non-JSON body, retrying (attempt ${attempt + 1}/${UPSTREAM_MAX_RETRIES})`);
+                    await sleep(UPSTREAM_RETRY_BASE_MS * 2 ** attempt);
+                    continue;
+                }
+
+                return result;
+            } catch (err) {
+                lastErr = err;
+                const timedOut = err.name === 'TimeoutError' || err.name === 'AbortError';
+                if (!timedOut && attempt < UPSTREAM_MAX_RETRIES) {
+                    console.error(`[proxy] ${url} threw, retrying (attempt ${attempt + 1}/${UPSTREAM_MAX_RETRIES}):`, err.message);
+                    await sleep(UPSTREAM_RETRY_BASE_MS * 2 ** attempt);
+                    continue;
+                }
+                throw err;
+            }
+        }
+
+        // Every attempt returned a non-JSON error body; surface the last one.
+        if (lastResult) return lastResult;
+        throw lastErr;
     })();
 
     inFlight.set(url, task);
