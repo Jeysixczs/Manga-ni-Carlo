@@ -1,6 +1,8 @@
 import React, { Suspense, lazy } from 'react';
-import { Routes, Route } from 'react-router-dom';
-import { ThemeProvider, useTheme } from './ThemeContext.jsx';
+import { Routes, Route, useLocation } from 'react-router-dom';
+import { ThemeProvider } from './ThemeContext.jsx';
+import SiteHeader from './components/SiteHeader.jsx';
+import SiteFooter from './components/SiteFooter.jsx';
 import GalleryPage from './components/GalleryPage.jsx';
 import { MangaDetailsSkeleton } from './components/Skeleton.jsx';
 
@@ -10,54 +12,43 @@ import { MangaDetailsSkeleton } from './components/Skeleton.jsx';
 const MangaDetailsPage = lazy(() => import('./components/MangaDetailsPage.jsx'));
 const ChapterReaderPage = lazy(() => import('./components/ChapterReaderPage.jsx'));
 
-function ThemeToggleButton() {
-    const { theme, toggleTheme } = useTheme();
+const READER_PATH = /\/chapter\//;
+
+function AppRoutes() {
     return (
-        <button className="theme-toggle" aria-label="Toggle theme" onClick={toggleTheme}>
-            {theme === 'dark' ? (
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                </svg>
-            ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-            )}
-        </button>
+        <Suspense fallback={<MangaDetailsSkeleton />}>
+            <Routes>
+                <Route path="/" element={<GalleryPage />} />
+                <Route path="/manga/:mangaId" element={<MangaDetailsPage />} />
+                <Route path="/manga/:mangaId/chapter/:chapterId" element={<ChapterReaderPage />} />
+                <Route path="*" element={<GalleryPage />} />
+            </Routes>
+        </Suspense>
     );
 }
 
-const CURRENT_YEAR = new Date().getFullYear();
+function AppShell() {
+    // The reader route keeps its own compact, auto-hiding header instead of the
+    // persistent site header, so the reading canvas stays full-bleed and the
+    // two navigation bars never compete for the same space.
+    const { pathname } = useLocation();
+    const isReader = READER_PATH.test(pathname);
 
-function Footer() {
     return (
-        <footer>
-            <p>&copy; {CURRENT_YEAR} ManhwaniCarlo. All rights reserved.</p>
-            <p className="footer-credit" style={{ margin: '10px' }}>
-                Created by <a href="https://jeysidev.vercel.app/" target="_blank" rel="noopener noreferrer">JeysiDev</a>
-            </p>
-            <p style={{ fontSize: '0.9em', color: '#aaa' }}>
-                Powered by <a target="_blank" rel="noopener noreferrer" style={{ color: '#81e6d9' }} href="https://mangadex.org">MangaDex API</a>
-            </p>
-        </footer>
+        <>
+            {!isReader && <SiteHeader />}
+            <div className="container">
+                <AppRoutes />
+            </div>
+            <SiteFooter />
+        </>
     );
 }
 
 export default function App() {
     return (
         <ThemeProvider>
-            <div className="container">
-                <Suspense fallback={<MangaDetailsSkeleton />}>
-                    <Routes>
-                        <Route path="/" element={<GalleryPage />} />
-                        <Route path="/manga/:mangaId" element={<MangaDetailsPage />} />
-                        <Route path="/manga/:mangaId/chapter/:chapterId" element={<ChapterReaderPage />} />
-                        <Route path="*" element={<GalleryPage />} />
-                    </Routes>
-                </Suspense>
-                <Footer />
-            </div>
-            <ThemeToggleButton />
+            <AppShell />
         </ThemeProvider>
     );
 }

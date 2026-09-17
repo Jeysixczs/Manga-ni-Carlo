@@ -309,8 +309,8 @@ export default function ChapterReaderPage() {
                     {!loading && !error && chapterData && (
                         <>
                             {chapterData.usingDataSaver && (
-                                <div className="warning" style={{ color: '#ffb300', margin: '10px 0', textAlign: 'center' }}>
-                                    Note: Low quality images (data-saver) are shown for this chapter.
+                                <div className="reader-warning">
+                                    Lower-quality data-saver images are shown for this chapter.
                                 </div>
                             )}
                             {chapterData.pages.map((pg, idx) => (

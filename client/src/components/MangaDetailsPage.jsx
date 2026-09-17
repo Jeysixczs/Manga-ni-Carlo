@@ -160,14 +160,16 @@ export default function MangaDetailsPage() {
     if (error || !manga) {
         return (
             <div id="manga-details-view" className="view active">
-                <div className="container">
-                    <button className="back-btn" onClick={() => navigate('/')}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M19 12H5M12 19l-7-7 7-7"></path>
-                        </svg>
-                        Back to Gallery
-                    </button>
-                    <div className="error">{error || 'Manga not found'}</div>
+                <button className="back-btn" onClick={() => navigate('/')}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M19 12H5M12 19l-7-7 7-7"></path>
+                    </svg>
+                    Back to gallery
+                </button>
+                <div className="error details-error">
+                    <h3>Couldn't load this title</h3>
+                    <p>{error || 'Manga not found'}</p>
+                    <button className="error-action" onClick={() => location.reload()}>Reload page</button>
                 </div>
             </div>
         );
@@ -188,166 +190,164 @@ export default function MangaDetailsPage() {
 
     return (
         <div id="manga-details-view" className="view active">
-            <div className="container">
-                <button id="back-to-gallery" className="back-btn" onClick={() => navigate('/')}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M19 12H5M12 19l-7-7 7-7"></path>
-                    </svg>
-                    Back to Gallery
-                </button>
+            <button id="back-to-gallery" className="back-btn" onClick={() => navigate('/')}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M19 12H5M12 19l-7-7 7-7"></path>
+                </svg>
+                Back to gallery
+            </button>
 
-                <h3 id="manga-details-title">{title}</h3>
+            <h1 id="manga-details-title">{title}</h1>
 
-                {stats && (stats.rating != null || stats.follows != null) && (
-                    <div className="manga-stats-bar">
-                        {stats.rating != null && (
-                            <span className="stat-pill stat-pill-rating">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7-6.2-3.8L6 21l1.6-7L2.2 9.2l7.1-.6z" /></svg>
-                                {stats.rating.toFixed(1)} <span className="stat-pill-label">rating</span>
-                            </span>
-                        )}
-                        {stats.follows != null && (
-                            <span className="stat-pill stat-pill-follows">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-                                {stats.follows.toLocaleString()} <span className="stat-pill-label">follows</span>
-                            </span>
-                        )}
+            {stats && (stats.rating != null || stats.follows != null) && (
+                <div className="manga-stats-bar">
+                    {stats.rating != null && (
+                        <span className="stat-pill stat-pill-rating">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7-6.2-3.8L6 21l1.6-7L2.2 9.2l7.1-.6z" /></svg>
+                            {stats.rating.toFixed(1)} <span className="stat-pill-label">rating</span>
+                        </span>
+                    )}
+                    {stats.follows != null && (
+                        <span className="stat-pill stat-pill-follows">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                            {stats.follows.toLocaleString()} <span className="stat-pill-label">follows</span>
+                        </span>
+                    )}
+                </div>
+            )}
+
+            <div className="manga-details-content">
+                <div className="manga-cover-section">
+                    {coverUrl && (
+                        <img
+                            className={coverClass}
+                            src={coverUrl}
+                            alt={title}
+                            onLoad={(e) => {
+                                const ratio = e.target.naturalWidth / e.target.naturalHeight;
+                                setCoverAspect(ratio < 0.6 ? 'tall' : ratio > 0.8 ? 'wide' : null);
+                            }}
+                            decoding="async"
+                            fetchpriority="high"
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                    )}
+                    <div className="manga-meta">
+                        <div className="meta-item"><strong>Status:</strong> <span>{attr.status || 'Unknown'}</span></div>
+                        <div className="meta-item"><strong>Year:</strong> <span>{attr.year || 'Unknown'}</span></div>
+                        <div className="meta-item"><strong>Author:</strong> <span>{authorRel?.attributes?.name || 'Unknown'}</span></div>
+                        <div className="meta-item"><strong>Artist:</strong> <span>{artistRel?.attributes?.name || 'Unknown'}</span></div>
+                        <div className="meta-item"><strong>Genres:</strong> <span>{genres || 'Unknown'}</span></div>
                     </div>
-                )}
+                </div>
 
-                <div className="manga-details-content">
-                    <div className="manga-cover-section">
-                        {coverUrl && (
-                            <img
-                                className={coverClass}
-                                src={coverUrl}
-                                alt={title}
-                                onLoad={(e) => {
-                                    const ratio = e.target.naturalWidth / e.target.naturalHeight;
-                                    setCoverAspect(ratio < 0.6 ? 'tall' : ratio > 0.8 ? 'wide' : null);
-                                }}
-                                decoding="async"
-                                fetchpriority="high"
-                                onError={(e) => { e.target.style.display = 'none'; }}
-                            />
-                        )}
-                        <div className="manga-meta">
-                            <div className="meta-item"><strong>Status:</strong> <span>{attr.status || 'Unknown'}</span></div>
-                            <div className="meta-item"><strong>Year:</strong> <span>{attr.year || 'Unknown'}</span></div>
-                            <div className="meta-item"><strong>Author:</strong> <span>{authorRel?.attributes?.name || 'Unknown'}</span></div>
-                            <div className="meta-item"><strong>Artist:</strong> <span>{artistRel?.attributes?.name || 'Unknown'}</span></div>
-                            <div className="meta-item"><strong>Genres:</strong> <span>{genres || 'Unknown'}</span></div>
-                        </div>
+                <div className="manga-info-section">
+                    <div className="manga-alternative-titles">
+                        <h3>Alternative titles</h3>
+                        <div id="manga-alt-titles">{getAltTitles(attr) || 'No alternative titles'}</div>
                     </div>
 
-                    <div className="manga-info-section">
-                        <div className="manga-alternative-titles">
-                            <h3>Alternative Titles</h3>
-                            <div id="manga-alt-titles">{getAltTitles(attr) || 'No alternative titles'}</div>
-                        </div>
+                    <div className="manga-description">
+                        <h3>Description</h3>
+                        <div id="manga-full-description">{getDescription(attr) || 'No description available'}</div>
+                    </div>
 
-                        <div className="manga-description">
-                            <h3>Description</h3>
-                            <div id="manga-full-description">{getDescription(attr) || 'No description available'}</div>
-                        </div>
-
-                        <div className="manga-chapters">
-                            <div className="chapters-header">
-                                <h3>Chapters</h3>
-                                <div className="chapter-view-toggle" role="tablist" aria-label="Chapter view">
-                                    <button
-                                        type="button"
-                                        className={chapterView === 'list' ? 'active' : ''}
-                                        onClick={() => setChapterView('list')}
+                    <div className="manga-chapters">
+                        <div className="chapters-header">
+                            <h3>Chapters</h3>
+                            <div className="chapter-view-toggle" role="tablist" aria-label="Chapter view">
+                                <button
+                                    type="button"
+                                    className={chapterView === 'list' ? 'active' : ''}
+                                    onClick={() => setChapterView('list')}
+                                >
+                                    List
+                                </button>
+                                <button
+                                    type="button"
+                                    className={chapterView === 'volumes' ? 'active' : ''}
+                                    onClick={() => setChapterView('volumes')}
+                                >
+                                    By volume
+                                </button>
+                            </div>
+                            {availableLanguages.length > 1 && (
+                                <div className="chapter-lang-filter">
+                                    <label htmlFor="chapter-lang-select">Language</label>
+                                    <select
+                                        id="chapter-lang-select"
+                                        value={chapterLanguage}
+                                        onChange={(e) => setChapterLanguage(e.target.value)}
                                     >
-                                        List
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className={chapterView === 'volumes' ? 'active' : ''}
-                                        onClick={() => setChapterView('volumes')}
-                                    >
-                                        By Volume
-                                    </button>
+                                        <option value="">All languages</option>
+                                        {availableLanguages.map((code) => (
+                                            <option key={code} value={code}>{languageLabel(code)}</option>
+                                        ))}
+                                    </select>
                                 </div>
-                                {availableLanguages.length > 1 && (
-                                    <div className="chapter-lang-filter">
-                                        <label htmlFor="chapter-lang-select">Language</label>
-                                        <select
-                                            id="chapter-lang-select"
-                                            value={chapterLanguage}
-                                            onChange={(e) => setChapterLanguage(e.target.value)}
-                                        >
-                                            <option value="">All languages</option>
-                                            {availableLanguages.map((code) => (
-                                                <option key={code} value={code}>{languageLabel(code)}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                )}
-                            </div>
-                            <div id="manga-chapters-list" className="chapters-list">
-                                {chapterView === 'list' ? (
-                                    chaptersLoading ? (
-                                        Array.from({ length: 6 }).map((_, i) => <ChapterItemSkeleton key={i} />)
-                                    ) : chapters.length === 0 ? (
-                                        <div className="error">No chapters available{chapterLanguage ? ' in this language' : ''}</div>
-                                    ) : (
-                                        <>
-                                            <div className="chapter-list-header">{totalChapters || chapters.length} Chapters Available</div>
-                                            {chapterRows.map(({ id, idx, titleText, metaText }) => (
-                                                <div key={id} className="chapter-item" onClick={() => navigate(`/manga/${manga.id}/chapter/${id}`, { state: { chapterIndex: idx } })}>
-                                                    <span className="chapter-title">{titleText}</span>
-                                                    <span className="chapter-meta">{metaText}</span>
-                                                </div>
-                                            ))}
-                                            {totalChapters > chapters.length && (
-                                                <button className="load-more-chapters" disabled={loadingMore} onClick={loadMoreChapters}>
-                                                    {loadingMore ? 'Loading...' : 'Load More Chapters'}
-                                                </button>
-                                            )}
-                                        </>
-                                    )
-                                ) : volumesLoading ? (
-                                    Array.from({ length: 4 }).map((_, i) => <ChapterItemSkeleton key={i} />)
-                                ) : volumesError ? (
-                                    <div className="error">{volumesError}</div>
-                                ) : volumes.length === 0 ? (
-                                    <div className="error">No volume data available{chapterLanguage ? ' in this language' : ''}</div>
+                            )}
+                        </div>
+                        <div id="manga-chapters-list" className="chapters-list">
+                            {chapterView === 'list' ? (
+                                chaptersLoading ? (
+                                    Array.from({ length: 6 }).map((_, i) => <ChapterItemSkeleton key={i} />)
+                                ) : chapters.length === 0 ? (
+                                    <div className="error full-span">No chapters available{chapterLanguage ? ' in this language' : ''}</div>
                                 ) : (
-                                    <div className="volume-accordion">
-                                        {volumes.map((vol) => {
-                                            const key = vol.volume ?? 'none';
-                                            const isOpen = expandedVolumes.has(vol.volume);
-                                            return (
-                                                <div key={key} className={`volume-group${isOpen ? ' open' : ''}`}>
-                                                    <button type="button" className="volume-group-header" onClick={() => toggleVolume(vol.volume)}>
-                                                        <svg className="volume-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6" /></svg>
-                                                        <span>{vol.volume ? `Volume ${vol.volume}` : 'No Volume'}</span>
-                                                        <span className="volume-count">{vol.chapters.length} ch.</span>
-                                                    </button>
-                                                    {isOpen && (
-                                                        <div className="volume-chapter-grid">
-                                                            {vol.chapters.map((c) => (
-                                                                <button
-                                                                    type="button"
-                                                                    key={c.id}
-                                                                    className="volume-chapter-chip"
-                                                                    title={c.count > 1 ? `${c.count} translations` : undefined}
-                                                                    onClick={() => navigate(`/manga/${manga.id}/chapter/${c.id}`)}
-                                                                >
-                                                                    {c.chapter ? `Ch. ${c.chapter}` : 'Oneshot'}
-                                                                    {c.count > 1 && <span className="volume-chapter-chip-count">{c.count}</span>}
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </div>
+                                    <>
+                                        <div className="chapter-list-header">{totalChapters || chapters.length} chapters available</div>
+                                        {chapterRows.map(({ id, idx, titleText, metaText }) => (
+                                            <div key={id} className="chapter-item" onClick={() => navigate(`/manga/${manga.id}/chapter/${id}`, { state: { chapterIndex: idx } })}>
+                                                <span className="chapter-title">{titleText}</span>
+                                                <span className="chapter-meta">{metaText}</span>
+                                            </div>
+                                        ))}
+                                        {totalChapters > chapters.length && (
+                                            <button className="load-more-chapters" disabled={loadingMore} onClick={loadMoreChapters}>
+                                                {loadingMore ? 'Loading…' : 'Load more chapters'}
+                                            </button>
+                                        )}
+                                    </>
+                                )
+                            ) : volumesLoading ? (
+                                Array.from({ length: 4 }).map((_, i) => <ChapterItemSkeleton key={i} />)
+                            ) : volumesError ? (
+                                <div className="error full-span">{volumesError}</div>
+                            ) : volumes.length === 0 ? (
+                                <div className="error full-span">No volume data available{chapterLanguage ? ' in this language' : ''}</div>
+                            ) : (
+                                <div className="volume-accordion">
+                                    {volumes.map((vol) => {
+                                        const key = vol.volume ?? 'none';
+                                        const isOpen = expandedVolumes.has(vol.volume);
+                                        return (
+                                            <div key={key} className={`volume-group${isOpen ? ' open' : ''}`}>
+                                                <button type="button" className="volume-group-header" onClick={() => toggleVolume(vol.volume)}>
+                                                    <svg className="volume-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6" /></svg>
+                                                    <span>{vol.volume ? `Volume ${vol.volume}` : 'No volume'}</span>
+                                                    <span className="volume-count">{vol.chapters.length} ch.</span>
+                                                </button>
+                                                {isOpen && (
+                                                    <div className="volume-chapter-grid">
+                                                        {vol.chapters.map((c) => (
+                                                            <button
+                                                                type="button"
+                                                                key={c.id}
+                                                                className="volume-chapter-chip"
+                                                                title={c.count > 1 ? `${c.count} translations` : undefined}
+                                                                onClick={() => navigate(`/manga/${manga.id}/chapter/${c.id}`)}
+                                                            >
+                                                                {c.chapter ? `Ch. ${c.chapter}` : 'Oneshot'}
+                                                                {c.count > 1 && <span className="volume-chapter-chip-count">{c.count}</span>}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -355,3 +355,5 @@ export default function MangaDetailsPage() {
         </div>
     );
 }
+
+

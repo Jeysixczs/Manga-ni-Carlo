@@ -181,9 +181,6 @@ export default function GalleryPage() {
 
     return (
         <div id="gallery-view" className="view active">
-            <h1>Manhwa ni Carlo</h1>
-            <p style={{ textAlign: 'center', margin: 20 }}>This website is for personal use only.</p>
-
             <div className="nav-tabs">
                 {TABS.map((t) => (
                     <div
@@ -214,16 +211,16 @@ export default function GalleryPage() {
             <div id="manga-list" className="manga-grid">
                 {loading && SKELETONS}
                 {!loading && error && (
-                    <div className="error" style={{ gridColumn: '1 / -1' }}>
-                        <h3>Loading Failed</h3>
+                    <div className="error full-span">
+                        <h3>Loading failed</h3>
                         <p>{error}</p>
-                        <button onClick={() => location.reload()} style={{ marginTop: 16, padding: '8px 16px', background: '#667eea', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer' }}>Reload Page</button>
+                        <button className="error-action" onClick={() => location.reload()}>Reload page</button>
                     </div>
                 )}
                 {!loading && !error && mangaList.length === 0 && (
-                    <div className="error" style={{ gridColumn: '1 / -1' }}>
+                    <div className="error full-span">
                         <h3>No manga found</h3>
-                        <p>Try adjusting your search terms or filters</p>
+                        <p>Try adjusting your search terms or filters.</p>
                     </div>
                 )}
                 {!loading && !error && mangaList.map((manga) => <MangaCard key={manga.id} manga={manga} stats={statsById[manga.id]} />)}

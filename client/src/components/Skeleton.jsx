@@ -7,7 +7,9 @@ export function SkeletonLine({ width = '100%', height = 12, style = {} }) {
 export function MangaCardSkeleton() {
     return (
         <div className="manga-card skeleton-card" aria-hidden="true">
-            <div className="manga-cover skeleton" />
+            <div className="manga-cover-wrap">
+                <div className="manga-cover skeleton is-loaded" />
+            </div>
             <div className="manga-info">
                 <SkeletonLine width="85%" height={14} />
                 <SkeletonLine width="55%" height={11} />

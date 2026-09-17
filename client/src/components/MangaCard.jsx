@@ -28,16 +28,17 @@ function MangaCard({ manga, stats }) {
 
     return (
         <div className="manga-card" onClick={() => navigate(`/manga/${manga.id}`)}>
-            <img
-                className="manga-cover"
-                alt={title}
-                src={imgSrc}
-                loading="lazy"
-                decoding="async"
-                style={{ opacity: loaded ? 1 : 0, transition: 'opacity 0.3s ease', backgroundColor: '#333' }}
-                onLoad={() => setLoaded(true)}
-                onError={() => { setImgSrc(createFallbackSVG('No Cover Available')); setLoaded(true); }}
-            />
+            <div className="manga-cover-wrap">
+                <img
+                    className={`manga-cover${loaded ? ' is-loaded' : ''}`}
+                    alt={title}
+                    src={imgSrc}
+                    loading="lazy"
+                    decoding="async"
+                    onLoad={() => setLoaded(true)}
+                    onError={() => { setImgSrc(createFallbackSVG('No Cover Available')); setLoaded(true); }}
+                />
+            </div>
             {(stats?.rating != null || stats?.follows != null) && (
                 <div className="manga-stats-badge">
                     {stats.rating != null && (

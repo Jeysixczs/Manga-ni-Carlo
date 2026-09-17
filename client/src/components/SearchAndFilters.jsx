@@ -143,7 +143,7 @@ export default function SearchAndFilters({
                 </div>
 
                 {showSuggestions && (
-                    <div id="search-suggestions" className="search-suggestions" style={{ display: 'block' }}>
+                    <div id="search-suggestions" className="search-suggestions">
                         {suggestions.map((s) => (
                             <div key={s.id} className="suggestion-item" onClick={() => pickSuggestion(s)}>
                                 <img
@@ -171,7 +171,7 @@ export default function SearchAndFilters({
                 </button>
 
                 {showFilters && (
-                    <div id="advanced-filters" className="advanced-filters" style={{ display: 'block' }}>
+                    <div id="advanced-filters" className="advanced-filters">
                         <div className="filter-group">
                             <label htmlFor="status-filter">Status:</label>
                             <select id="status-filter" value={localFilters.status} onChange={(e) => setLocalFilters((f) => ({ ...f, status: e.target.value }))}>
@@ -250,9 +250,9 @@ export default function SearchAndFilters({
             </div>
 
             {resultsInfo && (
-                <div id="search-results-info" className="search-results-info" style={{ display: 'flex' }}>
-                    <span className="search-results-text" style={{ marginRight: 10 }}>{resultsInfo}</span>
-                    <button className="clear-results-btn" onClick={onClear}>Clear Search</button>
+                <div id="search-results-info" className="search-results-info">
+                    <span className="search-results-text">{resultsInfo}</span>
+                    <button className="clear-results-btn" onClick={onClear}>Clear search</button>
                 </div>
             )}
         </div>
