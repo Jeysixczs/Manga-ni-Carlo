@@ -118,6 +118,7 @@ git ls-files | head -30
 
 ### Environment variables
 
+<<<<<<< HEAD
 None are required, but you should set the first one:
 
 | Variable | Purpose |
@@ -125,6 +126,13 @@ None are required, but you should set the first one:
 | `MANGADEX_CONTACT` | Goes into the `User-Agent` sent to MangaDex. Their docs require a User-Agent that isn't spoofed, and a real contact URL is what lets them reach you instead of banning you if this deployment ever misbehaves. Set it to your repo URL or an email. Defaults to a placeholder. |
 | `UPSTREAM_PROXY_URL` | Routes all MangaDex calls through a proxy you control, e.g. `http://user:pass@host:port`. Vercel functions egress from a shared, rotating IP pool, and MangaDex rate-limits and bans per IP — so requests fail intermittently through no fault of your own. A static-IP proxy (cheap VPS, QuotaGuard, Fixie) gives them one stable IP to see. `HTTPS_PROXY` works as a fallback name. **The proxy must be transparent**: MangaDex rejects any request carrying a `Via` header. |
 | `MANGADEX_REPORT` | Set to `false` to disable MangaDex@Home network reports. Leave it unset. Reporting is something their docs ask every client to do, and turning it off makes the volunteer CDN worse for everyone. |
+=======
+None are required. One is optional:
+
+| Variable | Purpose |
+|---|---|
+| `UPSTREAM_PROXY_URL` | Routes all MangaDex calls through a proxy you control, e.g. `http://user:pass@host:port`. Vercel functions egress from a shared, rotating IP pool, and MangaDex's Cloudflare blocks at the IP level — so requests fail intermittently through no fault of your own. A static-IP proxy (cheap VPS, QuotaGuard, Fixie) gives Cloudflare one stable IP to see. `HTTPS_PROXY` works as a fallback name. |
+>>>>>>> 4213e35e6d68fe0572ad25f74de146e5c29c6cdf
 
 Set it under **Project → Settings → Environment Variables**, then redeploy for it to take effect.
 
@@ -164,6 +172,7 @@ VS Code: bottom-right encoding indicator → **Save with Encoding** → **UTF-8*
 **Blank page, console errors about MIME types** — Framework Preset got set to Vite and is overriding the output directory. Set it to **Other** and redeploy.
 
 **Intermittent "The manga source is temporarily unreachable"** — this is the app's own message after its retries are exhausted. Expected occasionally on Vercel's shared IPs; a static-IP proxy is the real fix.
+<<<<<<< HEAD
 
 ---
 
@@ -196,3 +205,5 @@ A `cooldownMs` that stays high means the IP you're egressing from is being throt
 ### The serverless caveat
 
 The rate limiters live in process memory. On Vercel each function invocation may run in its own isolate, so they only coordinate requests that share a warm instance — under real traffic your true outbound rate can exceed the bucket. A single long-lived Node server (`npm start` on a VPS, Railway, Fly, Render) enforces them properly. If you stay on Vercel, `UPSTREAM_PROXY_URL` pointed at one machine you control is the next best thing.
+=======
+>>>>>>> 4213e35e6d68fe0572ad25f74de146e5c29c6cdf
