@@ -7,6 +7,79 @@ import { ReaderPageSkeleton } from './Skeleton.jsx';
 // How many pages to load eagerly before handing off to native lazy loading.
 const EAGER_PAGES = 2;
 
+/**
+ * One page image plus its own skeleton placeholder.
+ *
+ * The skeleton isn't only cosmetic here. An <img> with no width/height and no
+ * loaded bytes lays out at zero height, so before this existed every
+ * .page-container in the chapter stacked up at ~0px: the document had almost
+ * no scrollable height, which (a) made `loading="lazy"` consider every page to
+ * be in the viewport and fire all of them at once, (b) gave the
+ * IntersectionObserver a pile of overlapping zero-height targets to pick a
+ * "current page" from, and (c) made the restore-last-read-position
+ * scrollIntoView land in the wrong place. Reserving a 2:3 box per page until
+ * its image reports back fixes all three as a side effect.
+ */
+function ChapterPage({ index, src, innerRef, onFailure }) {
+    const [loaded, setLoaded] = useState(false);
+    const triedFallback = useRef(false);
+
+    // A cached image can finish loading before React attaches this handler, in
+    // which case onLoad never fires and the skeleton would sit there forever.
+    // img.complete is the only reliable way to catch that race.
+    const imgRef = useCallback((el) => {
+        if (el?.complete && el.naturalWidth > 0) setLoaded(true);
+    }, []);
+
+    // When the reader gets a fresh MangaDex@Home server, src changes underneath
+    // a component that isn't remounting (the key is the page filename, which is
+    // stable across servers). Re-arm so the new URL gets a real attempt and its
+    // own skeleton instead of being treated as already-failed.
+    useEffect(() => {
+        triedFallback.current = false;
+        setLoaded(false);
+    }, [src]);
+
+    // Each chapter remounts these (the key is the page filename), so state
+    // resets on its own — no effect needed to clear `loaded`.
+    return (
+        <div className="page-container" data-page-index={index} ref={innerRef}>
+            <div className={`page-frame${loaded ? '' : ' is-loading'}`}>
+                {!loaded && (
+                    <div className="page-skeleton skeleton" aria-hidden="true">
+                        <span className="page-skeleton-label">{index + 1}</span>
+                    </div>
+                )}
+                <img
+                    ref={imgRef}
+                    className="page-image"
+                    alt={`Page ${index + 1}`}
+                    loading={index < EAGER_PAGES ? 'eager' : 'lazy'}
+                    // Decoding off the main thread keeps scrolling smooth
+                    // while large page images are being rasterised.
+                    decoding="async"
+                    // Lowercase: React 18 does not map the camelCase
+                    // `fetchPriority` prop, so it must be passed as a
+                    // plain DOM attribute.
+                    fetchpriority={index < EAGER_PAGES ? 'high' : 'low'}
+                    src={src}
+                    onLoad={() => setLoaded(true)}
+                    onError={(e) => {
+                        // Swapping src starts another load, so without this guard
+                        // a fallback that somehow failed would loop forever.
+                        if (triedFallback.current) { setLoaded(true); return; }
+                        triedFallback.current = true;
+                        // Ask for a different @Home node first; if that works
+                        // the new src arrives and re-arms this component.
+                        onFailure?.();
+                        e.currentTarget.src = createFallbackSVG(`Failed to load page ${index + 1}`, 600, 800);
+                    }}
+                />
+            </div>
+        </div>
+    );
+}
+
 export default function ChapterReaderPage() {
     const { mangaId, chapterId } = useParams();
     const navigate = useNavigate();
@@ -33,11 +106,37 @@ export default function ChapterReaderPage() {
         return () => controller.abort();
     }, [mangaId]);
 
+    // MangaDex guarantees a base URL for only 15 minutes, and explicitly says
+    // to call /at-home/server/:id again when an image fails so a bad volunteer
+    // node can be swapped out. Both cases surface here as an image that won't
+    // load, so one handler covers them: fetch a fresh server, let the new URLs
+    // flow down, and cap the attempts so a genuinely dead chapter can't turn
+    // into a request loop against an endpoint budgeted at 40/min.
+    const serverRefreshes = useRef(0);
+    const refreshing = useRef(false);
+    const MAX_SERVER_REFRESHES = 3;
+
+    const handlePageFailure = useCallback(async () => {
+        if (refreshing.current || serverRefreshes.current >= MAX_SERVER_REFRESHES) return;
+        refreshing.current = true;
+        serverRefreshes.current += 1;
+        try {
+            const fresh = await fetchChapterPages(chapterId);
+            setChapterData(fresh);
+        } catch {
+            // Leave the existing (broken) URLs in place; the per-page fallback
+            // image already tells the reader that page didn't load.
+        } finally {
+            refreshing.current = false;
+        }
+    }, [chapterId]);
+
     // Load the current chapter's pages whenever chapterId changes.
     useEffect(() => {
         const controller = new AbortController();
         setLoading(true);
         setError(null);
+        serverRefreshes.current = 0;
         // Drop references to the previous chapter's DOM nodes. Truncating the
         // array (rather than leaving it long) means a 200-page chapter can't
         // keep 200 detached <div> elements reachable after a 5-page one loads.
@@ -215,22 +314,7 @@ export default function ChapterReaderPage() {
                                 </div>
                             )}
                             {chapterData.pages.map((pg, idx) => (
-                                <div className="page-container" key={pg} data-page-index={idx} ref={setPageRef}>
-                                    <img
-                                        className="page-image"
-                                        alt={`Page ${idx + 1}`}
-                                        loading={idx < EAGER_PAGES ? 'eager' : 'lazy'}
-                                        // Decoding off the main thread keeps scrolling smooth
-                                        // while large page images are being rasterised.
-                                        decoding="async"
-                                        // Lowercase: React 18 does not map the camelCase
-                                        // `fetchPriority` prop, so it must be passed as a
-                                        // plain DOM attribute.
-                                        fetchpriority={idx < EAGER_PAGES ? 'high' : 'low'}
-                                        src={pageUrls[idx]}
-                                        onError={(e) => { e.target.src = createFallbackSVG(`Failed to load page ${idx + 1}`, 600, 800); }}
-                                    />
-                                </div>
+                                <ChapterPage key={pg} index={idx} src={pageUrls[idx]} innerRef={setPageRef} onFailure={handlePageFailure} />
                             ))}
                         </>
                     )}

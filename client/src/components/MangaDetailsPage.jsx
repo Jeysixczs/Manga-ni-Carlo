@@ -4,6 +4,8 @@ import {
     CHAPTER_LIMIT,
     fetchMangaDetails,
     fetchChapters,
+    fetchMangaStatistics,
+    fetchMangaAggregate,
     getMainTitle,
     getAltTitles,
     getDescription,
@@ -26,6 +28,12 @@ export default function MangaDetailsPage() {
     const [coverAspect, setCoverAspect] = useState(null);
     const [chapterLanguage, setChapterLanguage] = useState('');
     const [chaptersLoading, setChaptersLoading] = useState(true);
+    const [stats, setStats] = useState(null);
+    const [chapterView, setChapterView] = useState('list'); // 'list' | 'volumes'
+    const [volumes, setVolumes] = useState([]);
+    const [volumesLoading, setVolumesLoading] = useState(false);
+    const [volumesError, setVolumesError] = useState(null);
+    const [expandedVolumes, setExpandedVolumes] = useState(() => new Set());
     const loadMoreAbortRef = useRef(null);
 
     // Load manga details once per manga.
@@ -68,6 +76,44 @@ export default function MangaDetailsPage() {
         })();
         return () => controller.abort();
     }, [mangaId, chapterLanguage]);
+
+    // Rating/follows are cosmetic, so they're loaded independently and never
+    // block or fail the rest of the page.
+    useEffect(() => {
+        const controller = new AbortController();
+        setStats(null);
+        fetchMangaStatistics(mangaId, controller.signal)
+            .then((s) => { if (!controller.signal.aborted) setStats(s); })
+            .catch(() => {});
+        return () => controller.abort();
+    }, [mangaId]);
+
+    // The "by volume" tree is only fetched the first time that view is opened
+    // (and refetched if the manga or language filter changes while it's the
+    // active view) — most visits never switch away from the flat list.
+    useEffect(() => {
+        if (chapterView !== 'volumes') return;
+        const controller = new AbortController();
+        setVolumesLoading(true);
+        setVolumesError(null);
+        fetchMangaAggregate(mangaId, chapterLanguage, controller.signal)
+            .then((v) => {
+                if (controller.signal.aborted) return;
+                setVolumes(v);
+                setExpandedVolumes(new Set(v.slice(0, 1).map((vol) => vol.volume)));
+            })
+            .catch((err) => { if (!isAbortError(err)) setVolumesError(err.message || 'Failed to load volumes'); })
+            .finally(() => { if (!controller.signal.aborted) setVolumesLoading(false); });
+        return () => controller.abort();
+    }, [mangaId, chapterLanguage, chapterView]);
+
+    function toggleVolume(volKey) {
+        setExpandedVolumes((prev) => {
+            const next = new Set(prev);
+            if (next.has(volKey)) next.delete(volKey); else next.add(volKey);
+            return next;
+        });
+    }
 
     // "Load More" was the one request with no cancellation at all — navigating
     // away mid-load left it running and then set state on a dead component.
@@ -152,6 +198,23 @@ export default function MangaDetailsPage() {
 
                 <h3 id="manga-details-title">{title}</h3>
 
+                {stats && (stats.rating != null || stats.follows != null) && (
+                    <div className="manga-stats-bar">
+                        {stats.rating != null && (
+                            <span className="stat-pill stat-pill-rating">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7-6.2-3.8L6 21l1.6-7L2.2 9.2l7.1-.6z" /></svg>
+                                {stats.rating.toFixed(1)} <span className="stat-pill-label">rating</span>
+                            </span>
+                        )}
+                        {stats.follows != null && (
+                            <span className="stat-pill stat-pill-follows">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                                {stats.follows.toLocaleString()} <span className="stat-pill-label">follows</span>
+                            </span>
+                        )}
+                    </div>
+                )}
+
                 <div className="manga-details-content">
                     <div className="manga-cover-section">
                         {coverUrl && (
@@ -191,6 +254,22 @@ export default function MangaDetailsPage() {
                         <div className="manga-chapters">
                             <div className="chapters-header">
                                 <h3>Chapters</h3>
+                                <div className="chapter-view-toggle" role="tablist" aria-label="Chapter view">
+                                    <button
+                                        type="button"
+                                        className={chapterView === 'list' ? 'active' : ''}
+                                        onClick={() => setChapterView('list')}
+                                    >
+                                        List
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={chapterView === 'volumes' ? 'active' : ''}
+                                        onClick={() => setChapterView('volumes')}
+                                    >
+                                        By Volume
+                                    </button>
+                                </div>
                                 {availableLanguages.length > 1 && (
                                     <div className="chapter-lang-filter">
                                         <label htmlFor="chapter-lang-select">Language</label>
@@ -208,25 +287,65 @@ export default function MangaDetailsPage() {
                                 )}
                             </div>
                             <div id="manga-chapters-list" className="chapters-list">
-                                {chaptersLoading ? (
-                                    Array.from({ length: 6 }).map((_, i) => <ChapterItemSkeleton key={i} />)
-                                ) : chapters.length === 0 ? (
-                                    <div className="error">No chapters available{chapterLanguage ? ' in this language' : ''}</div>
+                                {chapterView === 'list' ? (
+                                    chaptersLoading ? (
+                                        Array.from({ length: 6 }).map((_, i) => <ChapterItemSkeleton key={i} />)
+                                    ) : chapters.length === 0 ? (
+                                        <div className="error">No chapters available{chapterLanguage ? ' in this language' : ''}</div>
+                                    ) : (
+                                        <>
+                                            <div className="chapter-list-header">{totalChapters || chapters.length} Chapters Available</div>
+                                            {chapterRows.map(({ id, idx, titleText, metaText }) => (
+                                                <div key={id} className="chapter-item" onClick={() => navigate(`/manga/${manga.id}/chapter/${id}`, { state: { chapterIndex: idx } })}>
+                                                    <span className="chapter-title">{titleText}</span>
+                                                    <span className="chapter-meta">{metaText}</span>
+                                                </div>
+                                            ))}
+                                            {totalChapters > chapters.length && (
+                                                <button className="load-more-chapters" disabled={loadingMore} onClick={loadMoreChapters}>
+                                                    {loadingMore ? 'Loading...' : 'Load More Chapters'}
+                                                </button>
+                                            )}
+                                        </>
+                                    )
+                                ) : volumesLoading ? (
+                                    Array.from({ length: 4 }).map((_, i) => <ChapterItemSkeleton key={i} />)
+                                ) : volumesError ? (
+                                    <div className="error">{volumesError}</div>
+                                ) : volumes.length === 0 ? (
+                                    <div className="error">No volume data available{chapterLanguage ? ' in this language' : ''}</div>
                                 ) : (
-                                    <>
-                                        <div className="chapter-list-header">{totalChapters || chapters.length} Chapters Available</div>
-                                        {chapterRows.map(({ id, idx, titleText, metaText }) => (
-                                            <div key={id} className="chapter-item" onClick={() => navigate(`/manga/${manga.id}/chapter/${id}`, { state: { chapterIndex: idx } })}>
-                                                <span className="chapter-title">{titleText}</span>
-                                                <span className="chapter-meta">{metaText}</span>
-                                            </div>
-                                        ))}
-                                        {totalChapters > chapters.length && (
-                                            <button className="load-more-chapters" disabled={loadingMore} onClick={loadMoreChapters}>
-                                                {loadingMore ? 'Loading...' : 'Load More Chapters'}
-                                            </button>
-                                        )}
-                                    </>
+                                    <div className="volume-accordion">
+                                        {volumes.map((vol) => {
+                                            const key = vol.volume ?? 'none';
+                                            const isOpen = expandedVolumes.has(vol.volume);
+                                            return (
+                                                <div key={key} className={`volume-group${isOpen ? ' open' : ''}`}>
+                                                    <button type="button" className="volume-group-header" onClick={() => toggleVolume(vol.volume)}>
+                                                        <svg className="volume-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6" /></svg>
+                                                        <span>{vol.volume ? `Volume ${vol.volume}` : 'No Volume'}</span>
+                                                        <span className="volume-count">{vol.chapters.length} ch.</span>
+                                                    </button>
+                                                    {isOpen && (
+                                                        <div className="volume-chapter-grid">
+                                                            {vol.chapters.map((c) => (
+                                                                <button
+                                                                    type="button"
+                                                                    key={c.id}
+                                                                    className="volume-chapter-chip"
+                                                                    title={c.count > 1 ? `${c.count} translations` : undefined}
+                                                                    onClick={() => navigate(`/manga/${manga.id}/chapter/${c.id}`)}
+                                                                >
+                                                                    {c.chapter ? `Ch. ${c.chapter}` : 'Oneshot'}
+                                                                    {c.count > 1 && <span className="volume-chapter-chip-count">{c.count}</span>}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                 )}
                             </div>
                         </div>

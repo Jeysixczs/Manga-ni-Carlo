@@ -78,7 +78,15 @@ export function ReaderPageSkeleton({ count = 3 }) {
         <>
             {Array.from({ length: count }).map((_, i) => (
                 <div className="page-container" key={i} aria-hidden="true">
-                    <div className="skeleton" style={{ width: '100%', aspectRatio: '2 / 3', borderRadius: 0 }} />
+                    {/* Same markup as a real loading page (see ChapterPage in
+                        ChapterReaderPage.jsx) so the placeholder shown while the
+                        page *list* is being fetched doesn't visibly reflow when
+                        the individual page skeletons replace it. */}
+                    <div className="page-frame is-loading">
+                        <div className="page-skeleton skeleton">
+                            <span className="page-skeleton-label">{i + 1}</span>
+                        </div>
+                    </div>
                 </div>
             ))}
         </>

@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import MangaCard from './MangaCard.jsx';
 import { MangaCardSkeleton } from './Skeleton.jsx';
 import SearchAndFilters from './SearchAndFilters.jsx';
-import { LIMIT, fetchMangaList, fetchRandomMangaList, fetchMangaCount, searchManga, isAbortError } from '../api.js';
+import { LIMIT, MAX_COLLECTION_WINDOW, maxReachablePage, fetchMangaList, fetchRandomMangaList, fetchMangaCount, searchManga, fetchBatchStatistics, isAbortError } from '../api.js';
 
 const TABS = [
     { key: 'featured', label: 'Explore', heading: 'Explore Manga' },
@@ -13,7 +13,10 @@ const TABS = [
 ];
 
 const TAB_ORDER = { popular: 'followedCount', 'recent-updates': 'latestUploadedChapter', 'new-releases': 'createdAt' };
-const DEFAULT_FILTERS = { status: '', year: '', contentRating: 'safe,suggestive,erotica', sortBy: 'latestUploadedChapter' };
+// How many pages deep a "Featured" run is allowed to go from its random start
+// before it would push past the 10.000-result window MangaDex enforces.
+const FEATURED_PAGES = 20;
+const DEFAULT_FILTERS = { status: '', year: '', contentRating: 'safe,suggestive,erotica', sortBy: 'latestUploadedChapter', genres: [] };
 
 export default function GalleryPage() {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -29,6 +32,7 @@ export default function GalleryPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [resultsInfo, setResultsInfo] = useState(null);
+    const [statsById, setStatsById] = useState({});
 
     const randomOffsetRef = useRef(0);
     const featuredTotalRef = useRef(null);
@@ -65,10 +69,16 @@ export default function GalleryPage() {
                     }
                 }
                 if (page === 1) {
-                    const maxTotal = featuredTotalRef.current;
-                    randomOffsetRef.current = Math.floor(Math.random() * Math.max(1, Math.min(maxTotal, 10000 - 10)));
+                    // The random starting point has to leave room for the
+                    // pages that follow it: MangaDex rejects offset + limit >
+                    // 10.000 outright, so landing near the top of the window
+                    // used to mean "Next" 400'd a page or two later.
+                    const reachable = Math.min(featuredTotalRef.current, MAX_COLLECTION_WINDOW);
+                    const headroom = Math.max(1, reachable - FEATURED_PAGES * LIMIT);
+                    randomOffsetRef.current = Math.floor(Math.random() * headroom);
                 }
-                const { data, total: t } = await fetchRandomMangaList({ offset: randomOffsetRef.current + (page - 1) * LIMIT, signal });
+                const offset = Math.min(randomOffsetRef.current + (page - 1) * LIMIT, MAX_COLLECTION_WINDOW - LIMIT);
+                const { data, total: t } = await fetchRandomMangaList({ offset, signal });
                 setMangaList(data);
                 setTotal(t);
                 setResultsInfo(null);
@@ -97,6 +107,19 @@ export default function GalleryPage() {
         load(controller.signal);
         return () => controller.abort();
     }, [load]);
+
+    // Rating/follows badges are non-essential polish, so they're fetched as a
+    // single batched follow-up request after the grid itself has rendered —
+    // never something the grid's own loading state waits on.
+    useEffect(() => {
+        if (!mangaList.length) { setStatsById({}); return; }
+        const controller = new AbortController();
+        setStatsById({});
+        fetchBatchStatistics(mangaList.map((m) => m.id), controller.signal)
+            .then((stats) => { if (!controller.signal.aborted) setStatsById(stats); })
+            .catch(() => {});
+        return () => controller.abort();
+    }, [mangaList]);
 
     useEffect(() => {
         setQuery(urlQuery);
@@ -149,7 +172,10 @@ export default function GalleryPage() {
         setParam({ page: newPage });
     }
 
-    const maxPages = Math.max(1, Math.ceil(total / LIMIT));
+    // Not just ceil(total / LIMIT): a 90.000-result set is real, but only the
+    // first 10.000 of it is addressable, so anything past that is a button
+    // that can only ever produce an error.
+    const maxPages = maxReachablePage(total, LIMIT);
     const activeTabInfo = useMemo(() => TABS.find((t) => t.key === tab) || TABS[0], [tab]);
     const heading = isSearchMode ? 'Search Results' : activeTabInfo.heading;
 
@@ -200,7 +226,7 @@ export default function GalleryPage() {
                         <p>Try adjusting your search terms or filters</p>
                     </div>
                 )}
-                {!loading && !error && mangaList.map((manga) => <MangaCard key={manga.id} manga={manga} />)}
+                {!loading && !error && mangaList.map((manga) => <MangaCard key={manga.id} manga={manga} stats={statsById[manga.id]} />)}
             </div>
 
             <div className="pagination-controls">
@@ -216,5 +242,6 @@ export default function GalleryPage() {
 const SKELETONS = Array.from({ length: LIMIT }, (_, i) => <MangaCardSkeleton key={i} />);
 
 function hasActiveFilters(filters) {
-    return Boolean(filters.status) || Boolean(filters.year) || filters.contentRating !== DEFAULT_FILTERS.contentRating || filters.sortBy !== DEFAULT_FILTERS.sortBy;
+    return Boolean(filters.status) || Boolean(filters.year) || filters.contentRating !== DEFAULT_FILTERS.contentRating
+        || filters.sortBy !== DEFAULT_FILTERS.sortBy || Boolean(filters.genres?.length);
 }

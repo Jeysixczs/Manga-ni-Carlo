@@ -77,6 +77,10 @@ All under `/api`, mirroring the MangaDex endpoints the app needs:
 | `GET /api/at-home/server/:id` | `GET https://api.mangadex.org/at-home/server/:id` (chapter page URLs) |
 | `GET /api/cover/:id` | `GET https://api.mangadex.org/cover/:id` |
 | `GET /api/image?url=` | Streams a cover/page image (only `*.mangadex.org` hosts allowed) |
+| `GET /api/tag` | `GET https://api.mangadex.org/manga/tag` (genre/theme/format taxonomy) |
+| `GET /api/statistics/manga/:id` | `GET https://api.mangadex.org/statistics/manga/:id` (rating + follows) |
+| `GET /api/statistics/manga?manga[]=` | `GET https://api.mangadex.org/statistics/manga?manga[]=` (batch ratings) |
+| `GET /api/manga/:id/aggregate` | `GET https://api.mangadex.org/manga/:id/aggregate` (volume/chapter tree) |
 
 A light rate limiter (180 req/min per IP) sits in front of `/api` to keep the server from
 getting MangaDex-rate-limited by a single runaway client.

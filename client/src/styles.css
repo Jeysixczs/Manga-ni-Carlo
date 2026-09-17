@@ -293,6 +293,7 @@ h3 { font-size: 1.15rem; margin-bottom: 0.6rem; }
   cursor: pointer;
   display: flex;
   flex-direction: column;
+  position: relative;
   transition: border-color 0.15s ease, transform 0.15s ease;
 }
 
@@ -612,6 +613,39 @@ h3 { font-size: 1.15rem; margin-bottom: 0.6rem; }
 
 .chapter-pages { display: flex; flex-direction: column; align-items: center; padding: 20px 0; gap: 4px; }
 .page-container { width: 100%; max-width: 800px; }
+.page-frame { position: relative; width: 100%; }
+
+/* While a page image has no bytes yet it lays out at zero height, collapsing
+   the whole chapter. Reserve a portrait-ish box so the scrollbar, lazy
+   loading and resume-position logic all have real geometry to work with. */
+.page-frame.is-loading { aspect-ratio: 2 / 3; background: var(--surface); }
+
+.page-skeleton {
+  position: absolute;
+  inset: 0;
+  border-radius: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.page-skeleton-label {
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  opacity: 0.35;
+  user-select: none;
+}
+
+/* Hide the image until it's decoded rather than letting it paint in
+   half-drawn over the skeleton. */
+.page-frame.is-loading .page-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+}
+
 .page-image { width: 100%; height: auto; display: block; }
 
 .warning {
@@ -658,6 +692,179 @@ footer p { margin-bottom: 8px; }
 .theme-toggle:hover { transform: scale(1.06); }
 .theme-toggle svg { width: 20px; height: 20px; }
 
+/* ============ Genre chips (search filters) ============ */
+.filter-group-genres { grid-column: 1 / -1; }
+
+.genre-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.genre-chip-loading { font-size: 0.8rem; color: var(--text-muted); }
+
+.genre-chip {
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.genre-chip:hover { color: var(--text); border-color: var(--accent); }
+
+.genre-chip.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+/* ============ Rating / follows badge on gallery cards ============ */
+.manga-stats-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.stat-rating, .stat-follows {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(14, 15, 19, 0.72);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.stat-rating svg { color: #f5c542; flex-shrink: 0; }
+.stat-follows svg { flex-shrink: 0; }
+
+/* ============ Rating / follows pills on the details page ============ */
+.manga-stats-bar {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: -14px 0 24px;
+}
+
+.stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.stat-pill-rating svg { color: #f5c542; }
+.stat-pill-follows svg { color: var(--accent); }
+.stat-pill-label { font-weight: 400; color: var(--text-muted); }
+
+/* ============ Chapter view toggle (List / By Volume) ============ */
+.chapter-view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.chapter-view-toggle button {
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chapter-view-toggle button + button { border-left: 1px solid var(--border); }
+.chapter-view-toggle button:hover { color: var(--text); }
+.chapter-view-toggle button.active { background: var(--accent); color: var(--accent-text); }
+
+/* ============ Volume accordion ============ */
+.volume-accordion { display: flex; flex-direction: column; gap: 8px; }
+
+.volume-group {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.volume-group-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.volume-chevron { flex-shrink: 0; transition: transform 0.15s ease; color: var(--text-muted); }
+.volume-group.open .volume-chevron { transform: rotate(90deg); }
+
+.volume-count { margin-left: auto; font-size: 0.78rem; font-weight: 400; color: var(--text-muted); }
+
+.volume-chapter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 8px;
+  padding: 0 14px 14px;
+}
+
+.volume-chapter-chip {
+  position: relative;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.volume-chapter-chip:hover { border-color: var(--accent); color: var(--accent); }
+
+.volume-chapter-chip-count {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 0.62rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* ============ Responsive ============ */
 @media (max-width: 900px) {
   .manga-details-content { grid-template-columns: 1fr; }
@@ -680,6 +887,8 @@ footer p { margin-bottom: 8px; }
   .manga-meta { width: 100%; }
 
   .chapters-list { grid-template-columns: 1fr; }
+  .volume-chapter-grid { grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); }
+  .manga-stats-bar { margin-top: 4px; }
 
   .reader-header-content { justify-content: center; }
   #chapter-title { order: 2; width: 100%; flex-basis: 100%; }

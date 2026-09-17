@@ -5,6 +5,28 @@ export const LIMIT = 10;
 export const CHAPTER_LIMIT = 100;
 const DEFAULT_CONTENT_RATING = 'safe,suggestive,erotica';
 
+// MangaDex rejects any collection request where offset + limit > 10.000, and
+// caps limit at 100. See https://api.mangadex.org/docs/2-limitations/ —
+// they state both are permanent, for performance reasons. The server clamps
+// these too (defence in depth), but doing it here as well means the UI never
+// offers a page that can't exist in the first place.
+export const MAX_COLLECTION_WINDOW = 10_000;
+export const MAX_LIMIT = 100;
+
+/** Highest 1-based page number that is actually reachable for a result set. */
+export function maxReachablePage(total, limit = LIMIT) {
+    const byResults = Math.ceil((total || 0) / limit);
+    const byWindow = Math.floor(MAX_COLLECTION_WINDOW / limit);
+    return Math.max(1, Math.min(byResults, byWindow));
+}
+
+function clampWindow(limit, offset) {
+    const l = Math.min(Math.max(1, Math.floor(limit)), MAX_LIMIT);
+    let o = Math.max(0, Math.floor(offset));
+    if (o + l > MAX_COLLECTION_WINDOW) o = MAX_COLLECTION_WINDOW - l;
+    return { limit: l, offset: o };
+}
+
 async function apiFetch(path, signal) {
     // res.json() parses straight off the stream. The old text() + JSON.parse
     // held the whole payload twice (string + parsed object) at once.
@@ -77,8 +99,9 @@ export function getPageImageUrl(baseUrl, chapterHash, fileName, useDataSaver) {
 
 function buildParams({ limit = LIMIT, offset = 0, title, filters = {}, order }) {
     const p = new URLSearchParams();
-    p.set('limit', limit);
-    p.set('offset', offset);
+    const bounded = clampWindow(limit, offset);
+    p.set('limit', bounded.limit);
+    p.set('offset', bounded.offset);
     p.set('hasAvailableChapters', 'true');
     p.append('includes[]', 'cover_art');
     p.append('includes[]', 'author');
@@ -87,6 +110,10 @@ function buildParams({ limit = LIMIT, offset = 0, title, filters = {}, order }) 
     (filters.contentRating || DEFAULT_CONTENT_RATING).split(',').forEach((r) => p.append('contentRating[]', r.trim()));
     if (filters.status) p.append('status[]', filters.status);
     if (filters.year) p.set('year', filters.year);
+    if (filters.genres?.length) {
+        filters.genres.forEach((tagId) => p.append('includedTags[]', tagId));
+        p.set('includedTagsMode', 'AND');
+    }
     const sortBy = order || filters.sortBy || 'latestUploadedChapter';
     if (sortBy === 'relevance' && !title) p.set('order[latestUploadedChapter]', 'desc');
     else if (sortBy === 'relevance') p.set('order[relevance]', 'desc');
@@ -164,6 +191,87 @@ export function languageLabel(code) {
     } catch {
         return code.toUpperCase();
     }
+}
+
+// ---- Tags (genres/themes/formats) — GET /api/tag -> /manga/tag ----
+// The taxonomy is effectively static, so this is fetched once per page load
+// and reused everywhere a genre picker is shown.
+let tagsPromise = null;
+export function fetchTags(signal) {
+    if (!tagsPromise) {
+        tagsPromise = apiFetch('/api/tag', signal)
+            .then((data) => (data.data || [])
+                .map((t) => ({
+                    id: t.id,
+                    name: t.attributes?.name?.en || Object.values(t.attributes?.name || {})[0] || 'Unknown',
+                    group: t.attributes?.group || 'other',
+                }))
+                .filter((t) => t.group === 'genre')
+                .sort((a, b) => a.name.localeCompare(b.name)))
+            .catch((err) => { tagsPromise = null; throw err; });
+    }
+    return tagsPromise;
+}
+
+function parseStatsEntry(entry) {
+    if (!entry) return null;
+    const rating = entry.rating?.bayesian ?? entry.rating?.average ?? null;
+    return {
+        rating: typeof rating === 'number' ? Math.round(rating * 10) / 10 : null,
+        follows: typeof entry.follows === 'number' ? entry.follows : null,
+    };
+}
+
+// ---- Statistics (bayesian rating + follows) ----
+export async function fetchMangaStatistics(mangaId, signal) {
+    const data = await apiFetch(`/api/statistics/manga/${mangaId}`, signal);
+    return parseStatsEntry(data?.statistics?.[mangaId]);
+}
+
+/** Batched: one request for a whole grid of cards instead of one per card. */
+export async function fetchBatchStatistics(mangaIds, signal) {
+    if (!mangaIds?.length) return {};
+    const params = new URLSearchParams();
+    mangaIds.forEach((id) => params.append('manga[]', id));
+    const data = await apiFetch(`/api/statistics/manga?${params.toString()}`, signal);
+    const out = {};
+    for (const [id, entry] of Object.entries(data?.statistics || {})) {
+        out[id] = parseStatsEntry(entry);
+    }
+    return out;
+}
+
+// ---- Aggregate (full volume -> chapter tree in one call) ----
+export async function fetchMangaAggregate(mangaId, language, signal) {
+    const params = new URLSearchParams();
+    if (language) params.append('translatedLanguage[]', language);
+    const qs = params.toString();
+    const data = await apiFetch(`/api/manga/${mangaId}/aggregate${qs ? `?${qs}` : ''}`, signal);
+    const volumesObj = data?.volumes || {};
+    // Sort volumes descending (newest first), "none" last; sort chapters
+    // within a volume descending too, numeric-aware so "10" sorts before "9".
+    const numericDesc = (a, b) => {
+        const na = Number(a), nb = Number(b);
+        if (Number.isNaN(na) || Number.isNaN(nb)) return String(b).localeCompare(String(a), undefined, { numeric: true });
+        return nb - na;
+    };
+    return Object.keys(volumesObj)
+        .sort((a, b) => (a === 'none' ? 1 : b === 'none' ? -1 : numericDesc(a, b)))
+        .map((volKey) => {
+            const chaptersObj = volumesObj[volKey]?.chapters || {};
+            const chapters = Object.keys(chaptersObj)
+                .sort(numericDesc)
+                .map((chKey) => {
+                    const c = chaptersObj[chKey];
+                    return {
+                        chapter: chKey === 'none' ? null : chKey,
+                        id: c.id,
+                        otherIds: Array.isArray(c.others) ? c.others : [],
+                        count: c.count ?? 1,
+                    };
+                });
+            return { volume: volKey === 'none' ? null : volKey, chapters };
+        });
 }
 
 export async function fetchChapterPages(chapterId, signal) {

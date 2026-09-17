@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { fetchSearchSuggestions, isAbortError } from '../api.js';
+import { fetchSearchSuggestions, fetchTags, isAbortError } from '../api.js';
 import { createFallbackSVG } from '../utils.js';
 
 const currentYear = new Date().getFullYear();
@@ -20,12 +20,30 @@ export default function SearchAndFilters({
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [showFilters, setShowFilters] = useState(false);
     const [localFilters, setLocalFilters] = useState(filters);
+    const [genreOptions, setGenreOptions] = useState([]);
     const debounceRef = useRef(null);
     const suggestAbortRef = useRef(null);
     const wrapRef = useRef(null);
 
     useEffect(() => setInputValue(query), [query]);
     useEffect(() => setLocalFilters(filters), [filters]);
+
+    // Genre chips are only fetched once the panel is opened for the first
+    // time — most visits never touch filters at all.
+    useEffect(() => {
+        if (!showFilters || genreOptions.length) return;
+        let cancelled = false;
+        fetchTags().then((tags) => { if (!cancelled) setGenreOptions(tags); }).catch(() => {});
+        return () => { cancelled = true; };
+    }, [showFilters, genreOptions.length]);
+
+    function toggleGenre(tagId) {
+        setLocalFilters((f) => {
+            const current = f.genres || [];
+            const next = current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId];
+            return { ...f, genres: next };
+        });
+    }
 
     useEffect(() => {
         function handleClickOutside(e) {
@@ -88,9 +106,12 @@ export default function SearchAndFilters({
         onSearch(s.title);
     }
 
-    const filtersActive = useMemo(() => Object.entries(localFilters).some(
-        ([k, v]) => v && !(k === 'contentRating' && v === 'safe,suggestive,erotica') && !(k === 'sortBy' && v === 'latestUploadedChapter')
-    ), [localFilters]);
+    const filtersActive = useMemo(() => Object.entries(localFilters).some(([k, v]) => {
+        if (k === 'contentRating') return v && v !== 'safe,suggestive,erotica';
+        if (k === 'sortBy') return v && v !== 'latestUploadedChapter';
+        if (k === 'genres') return Array.isArray(v) && v.length > 0;
+        return Boolean(v);
+    }), [localFilters]);
 
     return (
         <div className="search-section">
@@ -193,11 +214,31 @@ export default function SearchAndFilters({
                             </select>
                         </div>
 
+                        <div className="filter-group filter-group-genres">
+                            <label>Genres:</label>
+                            <div className="genre-chip-row">
+                                {genreOptions.length === 0 ? (
+                                    <span className="genre-chip-loading">Loading genres…</span>
+                                ) : (
+                                    genreOptions.map((g) => (
+                                        <button
+                                            type="button"
+                                            key={g.id}
+                                            className={`genre-chip${(localFilters.genres || []).includes(g.id) ? ' selected' : ''}`}
+                                            onClick={() => toggleGenre(g.id)}
+                                        >
+                                            {g.name}
+                                        </button>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
                         <button className="apply-filters-btn" onClick={() => onApplyFilters(localFilters)}>Apply Filters</button>
                         <button
                             className="reset-filters-btn"
                             onClick={() => {
-                                const reset = { status: '', year: '', contentRating: 'safe,suggestive,erotica', sortBy: 'latestUploadedChapter' };
+                                const reset = { status: '', year: '', contentRating: 'safe,suggestive,erotica', sortBy: 'latestUploadedChapter', genres: [] };
                                 setLocalFilters(reset);
                                 onResetFilters(reset);
                             }}
