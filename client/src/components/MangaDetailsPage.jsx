@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { HOME_URL, readUrl, getQueryParam } from '../routes.js';
+import { cleanDescription } from '../utils.js';
 import {
     CHAPTER_LIMIT,
     fetchMangaDetails,
@@ -12,18 +13,19 @@ import {
     getCoverImageUrl,
     languageLabel,
     isAbortError,
+    getChapterGroupName,
 } from '../api.js';
 import { MangaDetailsSkeleton, ChapterItemSkeleton } from './Skeleton.jsx';
 
 export default function MangaDetailsPage() {
-    const { mangaId } = useParams();
-    const navigate = useNavigate();
+    // Its own HTML page: /manga.html?id=<id>
+    const mangaId = getQueryParam('id');
 
     const [manga, setManga] = useState(null);
     const [chapters, setChapters] = useState([]);
     const [totalChapters, setTotalChapters] = useState(0);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+    const [error, setError] = useState(mangaId ? null : 'No manga selected');
     const [loadingMore, setLoadingMore] = useState(false);
     const [coverAspect, setCoverAspect] = useState(null);
     const [chapterLanguage, setChapterLanguage] = useState('');
@@ -34,10 +36,12 @@ export default function MangaDetailsPage() {
     const [volumesLoading, setVolumesLoading] = useState(false);
     const [volumesError, setVolumesError] = useState(null);
     const [expandedVolumes, setExpandedVolumes] = useState(() => new Set());
+    const [descOpen, setDescOpen] = useState(false);
     const loadMoreAbortRef = useRef(null);
 
     // Load manga details once per manga.
     useEffect(() => {
+        if (!mangaId) { setLoading(false); return undefined; }
         // An AbortController does what the old `cancelled` flag did AND stops the
         // network request itself, instead of letting it finish and throwing the
         // result away.
@@ -149,9 +153,13 @@ export default function MangaDetailsPage() {
             id: c.id,
             idx,
             titleText: `${chapterNum}${chapterTitle}`,
-            metaText: [lang, volume, pages, publishDate].filter(Boolean).join(' • '),
+            metaText: [lang, volume, pages, publishDate, getChapterGroupName(c)].filter(Boolean).join(' • '),
         };
     }), [chapters]);
+
+    useEffect(() => {
+        if (manga) document.title = `${getMainTitle(manga.attributes)} · Kitsunescan`;
+    }, [manga]);
 
     if (loading) {
         return <MangaDetailsSkeleton />;
@@ -160,12 +168,12 @@ export default function MangaDetailsPage() {
     if (error || !manga) {
         return (
             <div id="manga-details-view" className="view active">
-                <button className="back-btn" onClick={() => navigate('/')}>
+                <a className="back-btn" href={HOME_URL}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M19 12H5M12 19l-7-7 7-7"></path>
                     </svg>
                     Back to gallery
-                </button>
+                </a>
                 <div className="error details-error">
                     <h3>Couldn't load this title</h3>
                     <p>{error || 'Manga not found'}</p>
@@ -179,106 +187,118 @@ export default function MangaDetailsPage() {
     const title = getMainTitle(attr);
     const authorRel = manga.relationships?.find((r) => r.type === 'author');
     const artistRel = manga.relationships?.find((r) => r.type === 'artist');
-    const tags = attr.tags || [];
-    const genres = tags.filter((t) => t.attributes?.group === 'genre').map((t) => t.attributes?.name?.en || 'Unknown').join(', ');
-    // The details view shows a large cover, so the 512px thumbnail is the right
-    // trade-off here — still a fraction of the original's weight.
+    const tags = (attr.tags || []).map((t) => t.attributes?.name?.en).filter(Boolean);
+    const genres = (attr.tags || []).filter((t) => t.attributes?.group === 'genre').map((t) => t.attributes?.name?.en).filter(Boolean);
+    // The poster and the backdrop share one 512px thumbnail: still a fraction
+    // of the original's weight, and the browser only downloads it once.
     const coverUrl = getCoverImageUrl(manga, 512);
-    const coverClass = coverAspect === 'tall' ? 'details-cover tall' : coverAspect === 'wide' ? 'details-cover wide' : 'details-cover';
+    const coverClass = coverAspect === 'tall' ? 'detail-poster tall' : coverAspect === 'wide' ? 'detail-poster wide' : 'detail-poster';
     const availableLanguages = attr.availableTranslatedLanguages || [];
-
+    const description = cleanDescription(getDescription(attr), { paragraphs: true }) || 'No description available';
+    const longDescription = description.length > 420;
+    const altTitles = getAltTitles(attr);
+    const statusLabel = attr.status ? attr.status.charAt(0).toUpperCase() + attr.status.slice(1) : 'Unknown';
+    const firstChapter = chapters[0];
 
     return (
         <div id="manga-details-view" className="view active">
-            <button id="back-to-gallery" className="back-btn" onClick={() => navigate('/')}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M19 12H5M12 19l-7-7 7-7"></path>
-                </svg>
-                Back to gallery
-            </button>
+            <section className="detail-hero">
+                {coverUrl && <img className="detail-hero-bg" src={coverUrl} alt="" decoding="async" />}
+                <div className="detail-hero-scrim" aria-hidden="true" />
 
-            <h1 id="manga-details-title">{title}</h1>
+                <div className="detail-hero-inner">
+                    <a id="back-to-gallery" className="back-btn detail-back" href={HOME_URL}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M19 12H5M12 19l-7-7 7-7"></path>
+                        </svg>
+                        Back to gallery
+                    </a>
 
-            {stats && (stats.rating != null || stats.follows != null) && (
-                <div className="manga-stats-bar">
-                    {stats.rating != null && (
-                        <span className="stat-pill stat-pill-rating">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7-6.2-3.8L6 21l1.6-7L2.2 9.2l7.1-.6z" /></svg>
-                            {stats.rating.toFixed(1)} <span className="stat-pill-label">rating</span>
-                        </span>
-                    )}
-                    {stats.follows != null && (
-                        <span className="stat-pill stat-pill-follows">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-                            {stats.follows.toLocaleString()} <span className="stat-pill-label">follows</span>
-                        </span>
-                    )}
-                </div>
-            )}
+                    <div className="detail-hero-main">
+                        {coverUrl && (
+                            <img
+                                className={coverClass}
+                                src={coverUrl}
+                                alt={title}
+                                onLoad={(e) => {
+                                    const ratio = e.target.naturalWidth / e.target.naturalHeight;
+                                    setCoverAspect(ratio < 0.6 ? 'tall' : ratio > 0.8 ? 'wide' : null);
+                                }}
+                                decoding="async"
+                                fetchpriority="high"
+                                onError={(e) => { e.target.style.display = 'none'; }}
+                            />
+                        )}
 
-            <div className="manga-details-content">
-                <div className="manga-cover-section">
-                    {coverUrl && (
-                        <img
-                            className={coverClass}
-                            src={coverUrl}
-                            alt={title}
-                            onLoad={(e) => {
-                                const ratio = e.target.naturalWidth / e.target.naturalHeight;
-                                setCoverAspect(ratio < 0.6 ? 'tall' : ratio > 0.8 ? 'wide' : null);
-                            }}
-                            decoding="async"
-                            fetchpriority="high"
-                            onError={(e) => { e.target.style.display = 'none'; }}
-                        />
-                    )}
-                    <div className="manga-meta">
-                        <div className="meta-item"><strong>Status:</strong> <span>{attr.status || 'Unknown'}</span></div>
-                        <div className="meta-item"><strong>Year:</strong> <span>{attr.year || 'Unknown'}</span></div>
-                        <div className="meta-item"><strong>Author:</strong> <span>{authorRel?.attributes?.name || 'Unknown'}</span></div>
-                        <div className="meta-item"><strong>Artist:</strong> <span>{artistRel?.attributes?.name || 'Unknown'}</span></div>
-                        <div className="meta-item"><strong>Genres:</strong> <span>{genres || 'Unknown'}</span></div>
+                        <div className="detail-hero-copy">
+                            <div className="detail-eyebrow">{[statusLabel, attr.year].filter(Boolean).join(' · ')}</div>
+                            <h1 id="manga-details-title">{title}</h1>
+                            {altTitles && <div className="detail-alt">{altTitles}</div>}
+
+                            {stats && (stats.rating != null || stats.follows != null) && (
+                                <div className="manga-stats-bar">
+                                    {stats.rating != null && (
+                                        <span className="stat-pill stat-pill-rating">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7-6.2-3.8L6 21l1.6-7L2.2 9.2l7.1-.6z" /></svg>
+                                            {stats.rating.toFixed(1)} <span className="stat-pill-label">rating</span>
+                                        </span>
+                                    )}
+                                    {stats.follows != null && (
+                                        <span className="stat-pill stat-pill-follows">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                                            {stats.follows.toLocaleString()} <span className="stat-pill-label">follows</span>
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+
+                            {tags.length > 0 && (
+                                <div className="detail-tags">
+                                    {tags.slice(0, 8).map((t) => <span key={t} className="detail-tag">{t}</span>)}
+                                </div>
+                            )}
+
+                            <div className="hero-actions">
+                                {firstChapter ? (
+                                    <a className="hero-btn hero-btn-primary" href={readUrl(manga.id, firstChapter.id)}>
+                                        Start reading
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6" />
+                                        </svg>
+                                    </a>
+                                ) : (
+                                    <span className="hero-btn hero-btn-primary is-disabled">{chaptersLoading ? 'Loading chapters…' : 'No chapters yet'}</span>
+                                )}
+                                <a className="hero-btn hero-btn-ghost" href="#chapters">Browse chapters</a>
+                            </div>
+                        </div>
                     </div>
                 </div>
+            </section>
 
-                <div className="manga-info-section">
-                    <div className="manga-alternative-titles">
-                        <h3>Alternative titles</h3>
-                        <div id="manga-alt-titles">{getAltTitles(attr) || 'No alternative titles'}</div>
-                    </div>
+            <div className="detail-layout">
+                <div className="detail-main">
+                    <section className="detail-card manga-description">
+                        <h3>Synopsis</h3>
+                        <div id="manga-full-description" className={`detail-desc${longDescription && !descOpen ? ' clamped' : ''}`}>{description}</div>
+                        {longDescription && (
+                            <button type="button" className="detail-more" onClick={() => setDescOpen((o) => !o)}>
+                                {descOpen ? 'Show less' : 'Read more'}
+                            </button>
+                        )}
+                    </section>
 
-                    <div className="manga-description">
-                        <h3>Description</h3>
-                        <div id="manga-full-description">{getDescription(attr) || 'No description available'}</div>
-                    </div>
-
-                    <div className="manga-chapters">
+                    <section id="chapters" className="detail-card manga-chapters">
                         <div className="chapters-header">
                             <h3>Chapters</h3>
                             <div className="chapter-view-toggle" role="tablist" aria-label="Chapter view">
-                                <button
-                                    type="button"
-                                    className={chapterView === 'list' ? 'active' : ''}
-                                    onClick={() => setChapterView('list')}
-                                >
-                                    List
-                                </button>
-                                <button
-                                    type="button"
-                                    className={chapterView === 'volumes' ? 'active' : ''}
-                                    onClick={() => setChapterView('volumes')}
-                                >
-                                    By volume
-                                </button>
+                                <button type="button" className={chapterView === 'list' ? 'active' : ''} onClick={() => setChapterView('list')}>List</button>
+                                <button type="button" className={chapterView === 'volumes' ? 'active' : ''} onClick={() => setChapterView('volumes')}>By volume</button>
                             </div>
                             {availableLanguages.length > 1 && (
                                 <div className="chapter-lang-filter">
                                     <label htmlFor="chapter-lang-select">Language</label>
-                                    <select
-                                        id="chapter-lang-select"
-                                        value={chapterLanguage}
-                                        onChange={(e) => setChapterLanguage(e.target.value)}
-                                    >
+                                    <select id="chapter-lang-select" value={chapterLanguage} onChange={(e) => setChapterLanguage(e.target.value)}>
                                         <option value="">All languages</option>
                                         {availableLanguages.map((code) => (
                                             <option key={code} value={code}>{languageLabel(code)}</option>
@@ -296,11 +316,11 @@ export default function MangaDetailsPage() {
                                 ) : (
                                     <>
                                         <div className="chapter-list-header">{totalChapters || chapters.length} chapters available</div>
-                                        {chapterRows.map(({ id, idx, titleText, metaText }) => (
-                                            <div key={id} className="chapter-item" onClick={() => navigate(`/manga/${manga.id}/chapter/${id}`, { state: { chapterIndex: idx } })}>
+                                        {chapterRows.map(({ id, titleText, metaText }) => (
+                                            <a key={id} className="chapter-item" href={readUrl(manga.id, id)}>
                                                 <span className="chapter-title">{titleText}</span>
                                                 <span className="chapter-meta">{metaText}</span>
-                                            </div>
+                                            </a>
                                         ))}
                                         {totalChapters > chapters.length && (
                                             <button className="load-more-chapters" disabled={loadingMore} onClick={loadMoreChapters}>
@@ -330,16 +350,15 @@ export default function MangaDetailsPage() {
                                                 {isOpen && (
                                                     <div className="volume-chapter-grid">
                                                         {vol.chapters.map((c) => (
-                                                            <button
-                                                                type="button"
+                                                            <a
                                                                 key={c.id}
                                                                 className="volume-chapter-chip"
                                                                 title={c.count > 1 ? `${c.count} translations` : undefined}
-                                                                onClick={() => navigate(`/manga/${manga.id}/chapter/${c.id}`)}
+                                                                href={readUrl(manga.id, c.id)}
                                                             >
                                                                 {c.chapter ? `Ch. ${c.chapter}` : 'Oneshot'}
                                                                 {c.count > 1 && <span className="volume-chapter-chip-count">{c.count}</span>}
-                                                            </button>
+                                                            </a>
                                                         ))}
                                                     </div>
                                                 )}
@@ -349,11 +368,23 @@ export default function MangaDetailsPage() {
                                 </div>
                             )}
                         </div>
-                    </div>
+                    </section>
                 </div>
+
+                <aside className="detail-side">
+                    <div className="detail-card manga-meta">
+                        <h3>Details</h3>
+                        <div className="meta-item"><strong>Status</strong> <span>{statusLabel}</span></div>
+                        <div className="meta-item"><strong>Year</strong> <span>{attr.year || 'Unknown'}</span></div>
+                        <div className="meta-item"><strong>Author</strong> <span>{authorRel?.attributes?.name || 'Unknown'}</span></div>
+                        <div className="meta-item"><strong>Artist</strong> <span>{artistRel?.attributes?.name || 'Unknown'}</span></div>
+                        <div className="meta-item"><strong>Genres</strong> <span>{genres.join(', ') || 'Unknown'}</span></div>
+                        {availableLanguages.length > 0 && (
+                            <div className="meta-item"><strong>Languages</strong> <span>{availableLanguages.length} available</span></div>
+                        )}
+                    </div>
+                </aside>
             </div>
         </div>
     );
 }
-
-

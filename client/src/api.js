@@ -43,7 +43,10 @@ async function apiFetch(path, signal) {
         throw new Error('The manga source is temporarily unreachable. Please try again in a moment.');
     }
     if (!res.ok) {
-        throw new Error(data?.error || data?.detail || `Request failed (${res.status})`);
+        // Our own proxy errors are {error, detail}; MangaDex's are passed
+        // through as {result:"error", errors:[{status, title, detail}]}.
+        const upstream = Array.isArray(data?.errors) ? data.errors[0] : null;
+        throw new Error(data?.error || upstream?.detail || upstream?.title || data?.detail || `Request failed (${res.status})`);
     }
     return data;
 }
@@ -97,7 +100,7 @@ export function getPageImageUrl(baseUrl, chapterHash, fileName, useDataSaver) {
     return `/api/image?url=${encodeURIComponent(directUrl)}`;
 }
 
-function buildParams({ limit = LIMIT, offset = 0, title, filters = {}, order }) {
+function buildParams({ limit = LIMIT, offset = 0, title, filters = {}, order, createdAtSince }) {
     const p = new URLSearchParams();
     const bounded = clampWindow(limit, offset);
     p.set('limit', bounded.limit);
@@ -107,9 +110,11 @@ function buildParams({ limit = LIMIT, offset = 0, title, filters = {}, order }) 
     p.append('includes[]', 'author');
     p.append('includes[]', 'artist');
     if (title) p.set('title', title);
+    if (createdAtSince) p.set('createdAtSince', createdAtSince);
     (filters.contentRating || DEFAULT_CONTENT_RATING).split(',').forEach((r) => p.append('contentRating[]', r.trim()));
     if (filters.status) p.append('status[]', filters.status);
     if (filters.year) p.set('year', filters.year);
+    if (filters.authors?.length) filters.authors.forEach((id) => p.append('authors[]', id));
     if (filters.genres?.length) {
         filters.genres.forEach((tagId) => p.append('includedTags[]', tagId));
         p.set('includedTagsMode', 'AND');
@@ -121,23 +126,11 @@ function buildParams({ limit = LIMIT, offset = 0, title, filters = {}, order }) 
     return p;
 }
 
-export async function fetchMangaList({ page = 1, limit = LIMIT, order, signal } = {}) {
+export async function fetchMangaList({ page = 1, limit = LIMIT, order, createdAtSince, signal } = {}) {
     const offset = (page - 1) * limit;
-    const params = buildParams({ limit, offset, order });
+    const params = buildParams({ limit, offset, order, createdAtSince });
     const data = await apiFetch(`/api/manga?${params.toString()}`, signal);
     return { data: data.data || [], total: data.total ?? 0 };
-}
-
-export async function fetchRandomMangaList({ offset, limit = LIMIT, signal } = {}) {
-    const params = buildParams({ limit, offset });
-    const data = await apiFetch(`/api/manga?${params.toString()}`, signal);
-    return { data: data.data || [], total: data.total ?? 0 };
-}
-
-export async function fetchMangaCount(signal) {
-    const params = buildParams({ limit: 1, offset: 0 });
-    const data = await apiFetch(`/api/manga?${params.toString()}`, signal);
-    return data.total ?? 5000;
 }
 
 export async function searchManga({ query, page = 1, limit = LIMIT, filters = {}, signal }) {
@@ -173,6 +166,8 @@ export async function fetchMangaDetails(mangaId, signal) {
 export async function fetchChapters(mangaId, offset = 0, limit = CHAPTER_LIMIT, language = '', signal) {
     const params = new URLSearchParams({ manga: mangaId, limit, offset });
     params.append('order[chapter]', 'asc');
+    // Reference expansion: attaches the group's name so the UI can credit it.
+    params.append('includes[]', 'scanlation_group');
     ['safe', 'suggestive', 'erotica'].forEach((r) => params.append('contentRating[]', r));
     if (language) params.append('translatedLanguage[]', language);
     const data = await apiFetch(`/api/chapter?${params.toString()}`, signal);
@@ -281,4 +276,152 @@ export async function fetchChapterPages(chapterId, signal) {
     if (!pages?.length) throw new Error('No pages available for this chapter');
     const usingDataSaver = !data.chapter.data?.length;
     return { ...data, pages, usingDataSaver };
+}
+
+
+// ---------------------------------------------------------------------------
+// Home dashboard + extra public MangaDex endpoints (all read-only, no login)
+// ---------------------------------------------------------------------------
+const RATINGS = ['safe', 'suggestive', 'erotica'];
+
+function withBase(p, { limit, offset = 0 }) {
+    const w = clampWindow(limit, offset);
+    p.set('limit', w.limit);
+    p.set('offset', w.offset);
+    RATINGS.forEach((r) => p.append('contentRating[]', r));
+    return p;
+}
+
+function withCovers(p) {
+    p.append('includes[]', 'cover_art');
+    p.append('includes[]', 'author');
+    p.append('includes[]', 'artist');
+    return p;
+}
+
+/** GET /manga ordered by any supported key; `createdAtSince` narrows to new titles. */
+export async function fetchMangaSection({ order, limit = 12, createdAtSince, signal } = {}) {
+    const p = withCovers(withBase(new URLSearchParams(), { limit }));
+    p.set('hasAvailableChapters', 'true');
+    p.set(`order[${order}]`, 'desc');
+    if (createdAtSince) p.set('createdAtSince', createdAtSince);
+    const data = await apiFetch(`/api/manga?${p.toString()}`, signal);
+    return data.data || [];
+}
+
+/** GET /manga?ids[]=... : batch-resolve manga (used to attach covers to chapter feeds). */
+export async function fetchMangaByIds(ids, signal) {
+    if (!ids?.length) return [];
+    const p = withCovers(withBase(new URLSearchParams(), { limit: ids.length }));
+    ids.forEach((id) => p.append('ids[]', id));
+    const data = await apiFetch(`/api/manga?${p.toString()}`, signal);
+    return data.data || [];
+}
+
+/** GET /manga/random */
+export async function fetchRandomManga(signal) {
+    const p = new URLSearchParams();
+    RATINGS.forEach((r) => p.append('contentRating[]', r));
+    p.append('includes[]', 'cover_art');
+    // The proxy is uncached for this route, but add a nonce so no browser or
+    // CDN layer can ever hand back the previous answer. (No limit/offset:
+    // /manga/random returns exactly one title and is not a collection.)
+    const data = await apiFetch(`/api/manga/random?${p.toString()}&_=${Date.now()}`, signal);
+    if (!data?.data?.id) throw new Error('No random manga returned');
+    return data.data;
+}
+
+/**
+ * GET /chapter ordered by publish time: the site-wide "latest updates" feed.
+ * One row per manga (newest chapter wins), external-only chapters dropped
+ * because they have no pages to read.
+ */
+export async function fetchLatestChapters({ limit = 12, language = 'en', signal } = {}) {
+    const p = withBase(new URLSearchParams(), { limit: 60 });
+    p.set('order[publishAt]', 'desc');
+    p.append('includes[]', 'manga');
+    p.append('includes[]', 'scanlation_group');
+    if (language) p.append('translatedLanguage[]', language);
+    p.set('includeExternalUrl', '0');
+    const data = await apiFetch(`/api/chapter?${p.toString()}`, signal);
+    const seen = new Set();
+    const rows = [];
+    for (const c of data.data || []) {
+        const a = c.attributes || {};
+        if (a.externalUrl || !a.pages) continue;
+        // Passing includeExternalUrl switches off MangaDex's default
+        // "publishAt <= now" filter (docs: Searching for chapters), so
+        // scheduled chapters would otherwise sort to the top of this feed.
+        if (a.publishAt && Date.parse(`${a.publishAt}`) > Date.now()) continue;
+        const mangaId = c.relationships?.find((r) => r.type === 'manga')?.id;
+        if (!mangaId || seen.has(mangaId)) continue;
+        seen.add(mangaId);
+        rows.push({
+            chapterId: c.id,
+            mangaId,
+            label: a.chapter ? `Ch. ${a.chapter}` : 'Oneshot',
+            group: c.relationships?.find((r) => r.type === 'scanlation_group')?.attributes?.name || '',
+            publishAt: a.publishAt,
+        });
+        if (rows.length >= limit) break;
+    }
+    const mangas = await fetchMangaByIds(rows.map((r) => r.mangaId), signal);
+    const byId = new Map(mangas.map((m) => [m.id, m]));
+    return rows.map((r) => ({ ...r, manga: byId.get(r.mangaId) })).filter((r) => r.manga);
+}
+
+/** GET /group : top scanlation groups, or search by name. */
+export async function fetchGroups({ name, limit = 8, signal } = {}) {
+    const p = new URLSearchParams();
+    const w = clampWindow(limit, 0);
+    p.set('limit', w.limit);
+    if (name) p.set('name', name); else p.set('order[followedCount]', 'desc');
+    const data = await apiFetch(`/api/group?${p.toString()}`, signal);
+    return (data.data || []).map((g) => ({ id: g.id, name: g.attributes?.name || 'Unknown group' }));
+}
+
+/** GET /author : search creators by name. */
+export async function fetchAuthors({ name, limit = 6, signal } = {}) {
+    if (!name || name.length < 2) return [];
+    const p = new URLSearchParams({ name });
+    p.set('limit', clampWindow(limit, 0).limit);
+    const data = await apiFetch(`/api/author?${p.toString()}`, signal);
+    return (data.data || []).map((a) => ({ id: a.id, name: a.attributes?.name || 'Unknown' }));
+}
+
+// Thin wrappers for the remaining public read endpoints. They are proxied and
+// ready to use; the UI just doesn't need every one of them yet.
+export const fetchAuthor = async (id, signal) => (await apiFetch(`/api/author/${id}`, signal)).data;
+export const fetchGroup = async (id, signal) => (await apiFetch(`/api/group/${id}`, signal)).data;
+export const fetchChapterInfo = async (id, signal) => (await apiFetch(`/api/chapter/${id}`, signal)).data;
+export async function fetchMangaFeed(mangaId, { limit = 20, offset = 0, language = '', signal } = {}) {
+    const p = new URLSearchParams({ limit, offset });
+    p.set('order[chapter]', 'desc');
+    if (language) p.append('translatedLanguage[]', language);
+    return apiFetch(`/api/manga/${mangaId}/feed?${p.toString()}`, signal);
+}
+export async function fetchCovers(mangaIds, signal) {
+    const p = new URLSearchParams({ limit: 100 });
+    mangaIds.forEach((id) => p.append('manga[]', id));
+    return (await apiFetch(`/api/cover?${p.toString()}`, signal)).data || [];
+}
+
+/** Name of the scanlation group credited on a chapter (needs includes[]=scanlation_group). */
+export function getChapterGroupName(chapter) {
+    return chapter?.relationships?.find((r) => r.type === 'scanlation_group')?.attributes?.name || '';
+}
+
+/**
+ * Seasonal picks: the most-followed series added since the season began
+ * (GET /manga, order[followedCount]=desc, createdAtSince=<season start>).
+ * MangaDex has no "season" concept, so this is derived from documented filters.
+ * Early in a season there may be few new titles, so if fewer than `minimum`
+ * come back it widens to include the previous season rather than show a stub.
+ */
+export async function fetchSeasonalPicks({ since, prevSince, limit = 12, minimum = 6, signal } = {}) {
+    let list = await fetchMangaSection({ order: 'followedCount', createdAtSince: since, limit, signal });
+    if (list.length < minimum && prevSince) {
+        list = await fetchMangaSection({ order: 'followedCount', createdAtSince: prevSince, limit, signal });
+    }
+    return list;
 }

@@ -108,6 +108,9 @@ const globalBucket = new TokenBucket('global', 4, 4);
 // Docs, endpoint-specific table: GET /at-home/server/{id} is 40 per 1 minute.
 const atHomeBucket = new TokenBucket('at-home', 40, 40 / 60);
 
+// Docs, endpoint-specific table: GET /manga/random is 60 per 1 minute.
+const randomBucket = new TokenBucket('random', 60, 1);
+
 // A 429 means we are already over the line. The documented failure mode is
 // that continuing to send while being 429'd escalates to an IP ban, so a 429
 // stops *all* upstream traffic until the window they name has passed, rather
@@ -146,7 +149,7 @@ function assertNotRateLimited() {
 // somewhere to look if this deployment ever misbehaves. Override
 // MANGADEX_CONTACT with your own repo/email when you deploy.
 const CONTACT = process.env.MANGADEX_CONTACT || 'https://github.com/Jeysixczs/manhwa-ni-carlo';
-const USER_AGENT = `ManhwaNiCarlo/2.0 (+${CONTACT})`;
+const USER_AGENT = `Kitsunescan/2.0 (+${CONTACT})`;
 
 // MangaDex's real API errors are always JSON, e.g. {"result":"error","errors":[...]}.
 // A non-JSON body on a non-2xx (typically an HTML Cloudflare/WAF block or
@@ -308,7 +311,7 @@ async function fetchUpstreamJson(url, { cache = true, bucket = null } = {}) {
                     ...(proxyDispatcher ? { dispatcher: proxyDispatcher } : {}),
                 });
                 const body = await upstream.text();
-                const result = { body, status: upstream.status };
+                const result = { body, status: upstream.status, requestId: upstream.headers.get('x-request-id') || null };
 
                 if (upstream.ok) {
                     if (cache) jsonCache.set(url, result);
@@ -415,6 +418,12 @@ const ALLOWED_QUERY_BASE_NAMES = new Set([
     // (GET /manga/:id/aggregate) — both previously stripped by the allowlist,
     // which silently dropped any includedTags[]/excludedTags[] the client sent.
     'includedTags', 'excludedTags', 'includedTagsMode', 'excludedTagsMode',
+    // Home dashboard: batch lookups by id, author/group search, creator
+    // filtering, "added since" windows, and chapter availability.
+    'ids', 'authors', 'artists', 'name', 'createdAtSince', 'updatedAtSince',
+    'publishAtSince', 'hasAvailableChapters', 'availableTranslatedLanguage',
+    'originalLanguage', 'publicationDemographic', 'includeFuturePublishAt',
+    'includeEmptyPages', 'includeExternalUrl',
 ]);
 function buildUpstreamSearch(req) {
     const qIndex = req.originalUrl.indexOf('?');
@@ -466,13 +475,14 @@ function clampCollectionParams(params) {
  * This runs server-side, so there's no CORS problem and no need to bounce
  * through third-party CORS proxies the way the original client-only app did.
  */
-async function proxyToMangaDex(upstreamPath, req, res, { maxAge = 60, cache = true, bucket = null } = {}) {
+async function proxyToMangaDex(upstreamPath, req, res, { maxAge = 60, cache = true, bucket = null, transform = null } = {}) {
     const url = `${MANGADEX_API}${upstreamPath}${buildUpstreamSearch(req)}`;
     try {
-        const { body, status } = await fetchUpstreamJson(url, { cache, bucket });
+        let { body, status, requestId } = await fetchUpstreamJson(url, { cache, bucket });
+        if (transform && status === 200) body = transform(body);
         // A 4xx from MangaDex means the request we built was wrong, and its body
         // names the offending parameter. Without this the reason never surfaces.
-        if (status >= 400) console.error(`[proxy] ${url} -> ${status}: ${body.slice(0, 500)}`);
+        if (status >= 400) console.error(`[proxy] ${url} -> ${status} (X-Request-ID: ${requestId || 'n/a'}): ${body.slice(0, 500)}`);
         if (res.writableEnded) return;
         res.status(status);
         res.type('application/json');
@@ -508,23 +518,89 @@ async function proxyToMangaDex(upstreamPath, req, res, { maxAge = 60, cache = tr
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// Scanlation-group removal requests — https://api.mangadex.org/docs/
+//
+// The acceptable-usage policy requires honouring a content-removal request
+// from an active group's leader. Put the group UUIDs in
+// MANGADEX_BLOCKED_GROUPS (comma-separated) and their chapters stop being
+// listed or readable here. Unset (the default) this is a no-op.
+// ---------------------------------------------------------------------------
+const BLOCKED_GROUPS = new Set(
+    (process.env.MANGADEX_BLOCKED_GROUPS || '').split(',').map((g) => g.trim().toLowerCase()).filter(Boolean),
+);
+const isBlockedChapter = (c) => (c?.relationships || []).some((r) => r.type === 'scanlation_group' && BLOCKED_GROUPS.has(String(r.id).toLowerCase()));
+
+// Drops blocked chapters from a collection body ({data: [chapter, ...]}).
+function filterBlockedChapters(body) {
+    if (!BLOCKED_GROUPS.size) return body;
+    try {
+        const json = JSON.parse(body);
+        if (!Array.isArray(json?.data)) return body;
+        json.data = json.data.filter((c) => !isBlockedChapter(c));
+        return JSON.stringify(json);
+    } catch {
+        return body;
+    }
+}
+
+// Direct-link guard for single-chapter reads (chapter metadata + page images).
+async function blockedChapterGuard(req, res, next) {
+    if (!BLOCKED_GROUPS.size) return next();
+    try {
+        const { body, status } = await fetchUpstreamJson(`${MANGADEX_API}/chapter/${encodeURIComponent(req.params.id)}`);
+        if (status === 200 && isBlockedChapter(JSON.parse(body)?.data)) {
+            return res.status(451).json({ error: 'This chapter has been removed at the scanlation group\'s request.' });
+        }
+    } catch {
+        // If the lookup itself fails, fall through: the real request below
+        // will surface the underlying problem.
+    }
+    next();
+}
+
 // ---- Manga list / search ----
 // GET /api/manga?limit=10&offset=0&title=...&contentRating[]=safe&order[latestUploadedChapter]=desc ...
 app.get('/api/manga', (req, res) => proxyToMangaDex('/manga', req, res));
+
+// ---- Random manga ----
+// GET /manga/random. Must be registered before /api/manga/:id or "random"
+// would be captured as an id. Never cached: the point is a different title
+// on every call.
+app.get('/api/manga/random', (req, res) => proxyToMangaDex('/manga/random', req, res, { maxAge: 0, cache: false, bucket: randomBucket }));
+
+// ---- A manga's own chapter feed ----
+// GET /manga/:id/feed. Same chapter objects as /chapter, scoped to one manga.
+app.get('/api/manga/:id/feed', (req, res) => proxyToMangaDex(`/manga/${req.params.id}/feed`, req, res, { maxAge: 120, transform: filterBlockedChapters }));
 
 // ---- Manga details ----
 app.get('/api/manga/:id', (req, res) => proxyToMangaDex(`/manga/${req.params.id}`, req, res, { maxAge: 300 }));
 
 // ---- Chapters for a manga (list) ----
 // Client calls /api/chapter?manga=<id>&limit=&offset=&...
-app.get('/api/chapter', (req, res) => proxyToMangaDex('/chapter', req, res, { maxAge: 120 }));
+app.get('/api/chapter', (req, res) => proxyToMangaDex('/chapter', req, res, { maxAge: 120, transform: filterBlockedChapters }));
 
 // ---- Chapter page server info ----
 // These URLs are short-lived tokens from MangaDex, so they are deliberately
 // left uncached.
 // The docs give this endpoint its own budget of 40 requests per minute, well
 // below the global 5/s, so it gets its own bucket on top of the global one.
-app.get('/api/at-home/server/:id', (req, res) => proxyToMangaDex(`/at-home/server/${req.params.id}`, req, res, { maxAge: 0, cache: false, bucket: atHomeBucket }));
+app.get('/api/at-home/server/:id', blockedChapterGuard, (req, res) => proxyToMangaDex(`/at-home/server/${req.params.id}`, req, res, { maxAge: 0, cache: false, bucket: atHomeBucket }));
+
+// ---- Single chapter ----
+app.get('/api/chapter/:id', blockedChapterGuard, (req, res) => proxyToMangaDex(`/chapter/${req.params.id}`, req, res, { maxAge: 300 }));
+
+// ---- Authors / artists (search + single) ----
+app.get('/api/author', (req, res) => proxyToMangaDex('/author', req, res, { maxAge: 300 }));
+app.get('/api/author/:id', (req, res) => proxyToMangaDex(`/author/${req.params.id}`, req, res, { maxAge: 600 }));
+
+// ---- Scanlation groups (search/list + single) ----
+app.get('/api/group', (req, res) => proxyToMangaDex('/group', req, res, { maxAge: 600 }));
+app.get('/api/group/:id', (req, res) => proxyToMangaDex(`/group/${req.params.id}`, req, res, { maxAge: 600 }));
+
+// ---- Cover art list (filter by manga[]) ----
+app.get('/api/cover', (req, res) => proxyToMangaDex('/cover', req, res, { maxAge: 3600 }));
 
 // ---- Cover art lookup by cover id ----
 app.get('/api/cover/:id', (req, res) => proxyToMangaDex(`/cover/${req.params.id}`, req, res, { maxAge: 3600 }));
@@ -737,6 +813,7 @@ app.get('/api/health', (_req, res) => res.json({
         globalTokens: Math.floor(globalBucket.tokens),
         atHomeTokens: Math.floor(atHomeBucket.tokens),
         reports: REPORTS_ENABLED,
+        blockedGroups: BLOCKED_GROUPS.size,
     },
 }));
 
@@ -756,6 +833,13 @@ if (!process.env.VERCEL) {
             if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
         },
     }));
+    // Old single-page URLs still work: send them to the matching HTML page.
+    app.get('/manga/:id/chapter/:chapterId', (req, res) => {
+        res.redirect(301, `/read.html?manga=${encodeURIComponent(req.params.id)}&chapter=${encodeURIComponent(req.params.chapterId)}`);
+    });
+    app.get('/manga/:id', (req, res) => {
+        res.redirect(301, `/manga.html?id=${encodeURIComponent(req.params.id)}`);
+    });
     app.get(/^(?!\/api).*/, (_req, res) => {
         res.setHeader('Cache-Control', 'no-cache');
         res.sendFile(indexHtml);

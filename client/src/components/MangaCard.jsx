@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { mangaUrl } from '../routes.js';
 import { getMainTitle, getAltTitles, getDescription, getCoverImageUrl } from '../api.js';
 import { createFallbackSVG } from '../utils.js';
 
@@ -15,7 +15,6 @@ function formatCount(n) {
 }
 
 function MangaCard({ manga, stats }) {
-    const navigate = useNavigate();
     const attr = manga.attributes || {};
     const title = getMainTitle(attr);
     const altTitles = getAltTitles(attr);
@@ -27,7 +26,7 @@ function MangaCard({ manga, stats }) {
     if (!manga?.id) return null;
 
     return (
-        <div className="manga-card" onClick={() => navigate(`/manga/${manga.id}`)}>
+        <a className="manga-card" href={mangaUrl(manga.id)}>
             <div className="manga-cover-wrap">
                 <img
                     className={`manga-cover${loaded ? ' is-loaded' : ''}`}
@@ -60,7 +59,7 @@ function MangaCard({ manga, stats }) {
                 {altTitles && <div className="manga-alt">{altTitles}</div>}
                 <div className="manga-desc">{shortDesc}</div>
             </div>
-        </div>
+        </a>
     );
 }
 

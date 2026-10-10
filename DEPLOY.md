@@ -1,4 +1,4 @@
-# Deploying Manhwa ni Carlo
+# Deploying Kitsunescan
 
 Run it locally, push it to GitHub, ship it on Vercel.
 
@@ -207,3 +207,12 @@ A `cooldownMs` that stays high means the IP you're egressing from is being throt
 The rate limiters live in process memory. On Vercel each function invocation may run in its own isolate, so they only coordinate requests that share a warm instance — under real traffic your true outbound rate can exceed the bucket. A single long-lived Node server (`npm start` on a VPS, Railway, Fly, Render) enforces them properly. If you stay on Vercel, `UPSTREAM_PROXY_URL` pointed at one machine you control is the next best thing.
 =======
 >>>>>>> 4213e35e6d68fe0572ad25f74de146e5c29c6cdf
+
+## MangaDex usage-policy settings
+
+| Variable | Purpose |
+| --- | --- |
+| `MANGADEX_CONTACT` | URL/email put in the `User-Agent` (MangaDex requires an honest, non-spoofed UA). |
+| `MANGADEX_BLOCKED_GROUPS` | Comma-separated scanlation-group UUIDs. Chapters from these groups are hidden from lists and return HTTP 451 when opened. Use this to honour a group leader's removal request. |
+| `MANGADEX_REPORT=false` | Disables MangaDex@Home image-health reports (leave enabled unless debugging). |
+| `UPSTREAM_PROXY_URL` | Optional static-IP egress proxy. |

@@ -1,21 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from '../useUrlParams.js';
+import { NAV_TABS as TABS, SEASON } from '../navLinks.js';
 import MangaCard from './MangaCard.jsx';
 import { MangaCardSkeleton } from './Skeleton.jsx';
 import SearchAndFilters from './SearchAndFilters.jsx';
-import { LIMIT, MAX_COLLECTION_WINDOW, maxReachablePage, fetchMangaList, fetchRandomMangaList, fetchMangaCount, searchManga, fetchBatchStatistics, isAbortError } from '../api.js';
+import HeroBanner from './HeroBanner.jsx';
+import HomeDashboard from './HomeDashboard.jsx';
+import { LIMIT, maxReachablePage, fetchMangaList, searchManga, fetchBatchStatistics, fetchAuthors, fetchGroups, isAbortError } from '../api.js';
 
-const TABS = [
-    { key: 'featured', label: 'Explore', heading: 'Explore Manga' },
-    { key: 'popular', label: 'Popular', heading: 'Popular Manga' },
-    { key: 'recent-updates', label: 'Recent Updates', heading: 'Recent Updates' },
-    { key: 'new-releases', label: 'New Releases', heading: 'New Releases' },
-];
-
-const TAB_ORDER = { popular: 'followedCount', 'recent-updates': 'latestUploadedChapter', 'new-releases': 'createdAt' };
-// How many pages deep a "Featured" run is allowed to go from its random start
-// before it would push past the 10.000-result window MangaDex enforces.
-const FEATURED_PAGES = 20;
+const TAB_ORDER = { popular: 'followedCount', 'recent-updates': 'latestUploadedChapter', 'new-releases': 'createdAt', season: 'followedCount' };
 const DEFAULT_FILTERS = { status: '', year: '', contentRating: 'safe,suggestive,erotica', sortBy: 'latestUploadedChapter', genres: [] };
 
 export default function GalleryPage() {
@@ -23,9 +16,14 @@ export default function GalleryPage() {
     const tab = searchParams.get('tab') || 'featured';
     const page = parseInt(searchParams.get('page') || '1', 10);
     const urlQuery = searchParams.get('q') || '';
+    // Deep links from the dashboard: /?genre=<tagId>&label=Action and /?author=<id>&label=Name
+    const urlGenre = searchParams.get('genre') || '';
+    const urlAuthor = searchParams.get('author') || '';
+    const scopeLabel = searchParams.get('label') || '';
+    const urlScoped = Boolean(urlGenre || urlAuthor);
 
     const [query, setQuery] = useState(urlQuery);
-    const [isSearchMode, setIsSearchMode] = useState(Boolean(urlQuery));
+    const [isSearchMode, setIsSearchMode] = useState(Boolean(urlQuery) || urlScoped);
     const [filters, setFilters] = useState(DEFAULT_FILTERS);
     const [mangaList, setMangaList] = useState([]);
     const [total, setTotal] = useState(0);
@@ -33,9 +31,14 @@ export default function GalleryPage() {
     const [error, setError] = useState(null);
     const [resultsInfo, setResultsInfo] = useState(null);
     const [statsById, setStatsById] = useState({});
+    const [matches, setMatches] = useState({ authors: [], groups: [] });
 
-    const randomOffsetRef = useRef(0);
-    const featuredTotalRef = useRef(null);
+    // URL scope (genre / author) layered over the filter panel's own state.
+    const activeFilters = useMemo(() => ({
+        ...filters,
+        genres: urlGenre ? [urlGenre] : filters.genres,
+        authors: urlAuthor ? [urlAuthor] : [],
+    }), [filters, urlGenre, urlAuthor]);
 
     const setParam = useCallback((updates) => {
         const next = new URLSearchParams(searchParams);
@@ -50,40 +53,23 @@ export default function GalleryPage() {
         setLoading(true);
         setError(null);
         try {
-            if (isSearchMode && (urlQuery || hasActiveFilters(filters))) {
-                const hasFilters = hasActiveFilters(filters);
-                const { data, total: t } = await searchManga({ query: urlQuery, page, filters, signal });
+            if (tab === 'featured' && !isSearchMode) {
+                // The dashboard owns this view and loads its own sections.
+                setMangaList([]);
+                setTotal(0);
+                setResultsInfo(null);
+            } else if (isSearchMode && (urlQuery || hasActiveFilters(activeFilters))) {
+                const hasFilters = hasActiveFilters(activeFilters);
+                const { data, total: t } = await searchManga({ query: urlQuery, page, filters: activeFilters, signal });
                 setMangaList(data);
                 setTotal(t);
-                if (urlQuery && hasFilters) setResultsInfo(`Found ${t} results for "${urlQuery}" with filters`);
+                if (scopeLabel && !urlQuery) setResultsInfo(`${t.toLocaleString()} titles in ${scopeLabel}`);
+                else if (urlQuery && hasFilters) setResultsInfo(`Found ${t} results for "${urlQuery}" with filters`);
                 else if (urlQuery) setResultsInfo(`Found ${t} results for "${urlQuery}"`);
                 else if (hasFilters) setResultsInfo(`Found ${t} results with filters`);
                 else setResultsInfo(null);
-            } else if (tab === 'featured') {
-                if (featuredTotalRef.current === null) {
-                    try {
-                        featuredTotalRef.current = await fetchMangaCount(signal);
-                    } catch (err) {
-                        if (isAbortError(err)) return;
-                        featuredTotalRef.current = 5000;
-                    }
-                }
-                if (page === 1) {
-                    // The random starting point has to leave room for the
-                    // pages that follow it: MangaDex rejects offset + limit >
-                    // 10.000 outright, so landing near the top of the window
-                    // used to mean "Next" 400'd a page or two later.
-                    const reachable = Math.min(featuredTotalRef.current, MAX_COLLECTION_WINDOW);
-                    const headroom = Math.max(1, reachable - FEATURED_PAGES * LIMIT);
-                    randomOffsetRef.current = Math.floor(Math.random() * headroom);
-                }
-                const offset = Math.min(randomOffsetRef.current + (page - 1) * LIMIT, MAX_COLLECTION_WINDOW - LIMIT);
-                const { data, total: t } = await fetchRandomMangaList({ offset, signal });
-                setMangaList(data);
-                setTotal(t);
-                setResultsInfo(null);
             } else {
-                const { data, total: t } = await fetchMangaList({ page, order: TAB_ORDER[tab], signal });
+                const { data, total: t } = await fetchMangaList({ page, order: TAB_ORDER[tab], createdAtSince: tab === 'season' ? SEASON.since : undefined, signal });
                 setMangaList(data);
                 setTotal(t);
                 setResultsInfo(null);
@@ -97,7 +83,7 @@ export default function GalleryPage() {
         } finally {
             if (!signal?.aborted) setLoading(false);
         }
-    }, [tab, page, isSearchMode, urlQuery, filters]);
+    }, [tab, page, isSearchMode, urlQuery, activeFilters, scopeLabel]);
 
     // Every tab switch / page change cancels the request it supersedes. Clicking
     // "Next" three times used to leave three requests racing, and whichever
@@ -123,17 +109,21 @@ export default function GalleryPage() {
 
     useEffect(() => {
         setQuery(urlQuery);
-        setIsSearchMode(Boolean(urlQuery) || hasActiveFilters(filters));
+        setIsSearchMode(Boolean(urlQuery) || urlScoped || hasActiveFilters(filters));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [urlQuery]);
+    }, [urlQuery, urlGenre, urlAuthor]);
 
-    function handleTabChange(newTab) {
-        if (loading) return;
-        setIsSearchMode(false);
-        setQuery('');
-        setFilters(DEFAULT_FILTERS);
-        setParam({ tab: newTab, page: 1, q: null });
-    }
+    // Creator and scanlation-group matches for a text search
+    // (GET /author?name= and GET /group?name=), shown above the results.
+    useEffect(() => {
+        if (!urlQuery || urlQuery.length < 2) { setMatches({ authors: [], groups: [] }); return undefined; }
+        const controller = new AbortController();
+        Promise.all([
+            fetchAuthors({ name: urlQuery, signal: controller.signal }).catch(() => []),
+            fetchGroups({ name: urlQuery, limit: 4, signal: controller.signal }).catch(() => []),
+        ]).then(([authors, groups]) => { if (!controller.signal.aborted) setMatches({ authors, groups }); });
+        return () => controller.abort();
+    }, [urlQuery]);
 
     function handleSearch(q) {
         if (!q && !hasActiveFilters(filters)) {
@@ -148,7 +138,7 @@ export default function GalleryPage() {
         setIsSearchMode(false);
         setQuery('');
         setFilters(DEFAULT_FILTERS);
-        setParam({ tab: 'featured', page: 1, q: null });
+        setParam({ tab: 'featured', page: 1, q: null, genre: null, author: null, label: null });
     }
 
     function handleApplyFilters(newFilters) {
@@ -177,21 +167,13 @@ export default function GalleryPage() {
     // that can only ever produce an error.
     const maxPages = maxReachablePage(total, LIMIT);
     const activeTabInfo = useMemo(() => TABS.find((t) => t.key === tab) || TABS[0], [tab]);
-    const heading = isSearchMode ? 'Search Results' : activeTabInfo.heading;
+    const heading = scopeLabel && !urlQuery ? scopeLabel : isSearchMode ? 'Search Results' : activeTabInfo.heading;
+
+    const showDashboard = !isSearchMode && tab === 'featured';
 
     return (
         <div id="gallery-view" className="view active">
-            <div className="nav-tabs">
-                {TABS.map((t) => (
-                    <div
-                        key={t.key}
-                        className={`nav-tab${tab === t.key && !isSearchMode ? ' active' : ''}`}
-                        onClick={() => handleTabChange(t.key)}
-                    >
-                        {t.label}
-                    </div>
-                ))}
-            </div>
+            {showDashboard && <HeroBanner />}
 
             <SearchAndFilters
                 query={query}
@@ -204,32 +186,58 @@ export default function GalleryPage() {
                 resultsInfo={resultsInfo}
             />
 
-            <div className="section-header">
-                <h2 className="section-title gradient-text">{heading}</h2>
-            </div>
+            {showDashboard ? <HomeDashboard /> : (
+                <>
+                    {(matches.authors.length > 0 || matches.groups.length > 0) && (
+                        <div className="match-strip">
+                            {matches.authors.length > 0 && (
+                                <div className="match-row">
+                                    <span className="match-label">Creators</span>
+                                    {matches.authors.map((a) => (
+                                        <a key={a.id} className="genre-chip" href={`/?author=${encodeURIComponent(a.id)}&label=${encodeURIComponent(a.name)}`}>{a.name}</a>
+                                    ))}
+                                </div>
+                            )}
+                            {matches.groups.length > 0 && (
+                                <div className="match-row">
+                                    <span className="match-label">Groups</span>
+                                    {matches.groups.map((g) => (
+                                        <a key={g.id} className="genre-chip" href={`https://mangadex.org/group/${g.id}`} target="_blank" rel="noopener noreferrer">{g.name}</a>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
 
-            <div id="manga-list" className="manga-grid">
-                {loading && SKELETONS}
-                {!loading && error && (
-                    <div className="error full-span">
-                        <h3>Loading failed</h3>
-                        <p>{error}</p>
-                        <button className="error-action" onClick={() => location.reload()}>Reload page</button>
+                    <div className="section-header">
+                        <h2 className="section-title gradient-text">{heading}</h2>
+                        {!loading && !error && mangaList.length > 0 && <span className="section-meta">Page {page}</span>}
                     </div>
-                )}
-                {!loading && !error && mangaList.length === 0 && (
-                    <div className="error full-span">
-                        <h3>No manga found</h3>
-                        <p>Try adjusting your search terms or filters.</p>
-                    </div>
-                )}
-                {!loading && !error && mangaList.map((manga) => <MangaCard key={manga.id} manga={manga} stats={statsById[manga.id]} />)}
-            </div>
 
-            <div className="pagination-controls">
-                <button disabled={page <= 1 || loading} onClick={() => goToPage(page - 1)}>Previous</button>
-                <button disabled={page >= maxPages || loading} onClick={() => goToPage(page + 1)}>Next</button>
-            </div>
+                    <div id="manga-list" className="manga-grid">
+                        {loading && SKELETONS}
+                        {!loading && error && (
+                            <div className="error full-span">
+                                <h3>Loading failed</h3>
+                                <p>{error}</p>
+                                <button className="error-action" onClick={() => location.reload()}>Reload page</button>
+                            </div>
+                        )}
+                        {!loading && !error && mangaList.length === 0 && (
+                            <div className="error full-span">
+                                <h3>No manga found</h3>
+                                <p>Try adjusting your search terms or filters.</p>
+                            </div>
+                        )}
+                        {!loading && !error && mangaList.map((manga) => <MangaCard key={manga.id} manga={manga} stats={statsById[manga.id]} />)}
+                    </div>
+
+                    <div className="pagination-controls">
+                        <button disabled={page <= 1 || loading} onClick={() => goToPage(page - 1)}>Previous</button>
+                        <button disabled={page >= maxPages || loading} onClick={() => goToPage(page + 1)}>Next</button>
+                    </div>
+                </>
+            )}
         </div>
     );
 }
@@ -239,6 +247,6 @@ export default function GalleryPage() {
 const SKELETONS = Array.from({ length: LIMIT }, (_, i) => <MangaCardSkeleton key={i} />);
 
 function hasActiveFilters(filters) {
-    return Boolean(filters.status) || Boolean(filters.year) || filters.contentRating !== DEFAULT_FILTERS.contentRating
+    return Boolean(filters.status) || Boolean(filters.year) || Boolean(filters.authors?.length) || filters.contentRating !== DEFAULT_FILTERS.contentRating
         || filters.sortBy !== DEFAULT_FILTERS.sortBy || Boolean(filters.genres?.length);
 }

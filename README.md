@@ -1,4 +1,4 @@
-# Manhwa ni Carlo — React + Express edition
+# Kitsunescan — React + Express edition
 
 A rewrite of the original single-page (HTML/CSS/vanilla JS) MangaDex reader as:
 

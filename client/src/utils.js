@@ -95,3 +95,26 @@ export function migrateLegacyReaderProgress() {
         // Nothing to do — worst case the old keys stay put.
     }
 }
+
+/**
+ * MangaDex descriptions are markdown and often trail off into "---" credit /
+ * link sections. Keep only the synopsis and strip the inline markup.
+ * `paragraphs: true` keeps blank-line breaks (details page); otherwise it is
+ * flattened to a single line (hero / cards).
+ */
+export function cleanDescription(raw, { paragraphs = false } = {}) {
+    const body = (raw || '').split(/\n\s*(?:---|___|\*\*\*)/)[0]
+        .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+        .replace(/[*_`#>~]/g, '');
+    if (!paragraphs) return body.replace(/\s+/g, ' ').trim();
+    return body.split(/\n{2,}/).map((p) => p.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n\n');
+}
+
+export function timeAgo(iso) {
+    const t = new Date(iso).getTime();
+    if (!Number.isFinite(t)) return '';
+    const s = Math.max(1, Math.round((Date.now() - t) / 1000));
+    const units = [['d', 86400], ['h', 3600], ['m', 60]];
+    for (const [label, size] of units) if (s >= size) return `${Math.floor(s / size)}${label} ago`;
+    return 'just now';
+}

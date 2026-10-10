@@ -2,6 +2,18 @@
   "installCommand": "npm run install:all",
   "buildCommand": "npm run build",
   "outputDirectory": "client/dist",
+  "redirects": [
+    {
+      "source": "/manga/:id/chapter/:chapterId",
+      "destination": "/read.html?manga=:id&chapter=:chapterId",
+      "permanent": true
+    },
+    {
+      "source": "/manga/:id",
+      "destination": "/manga.html?id=:id",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/(.*)",
